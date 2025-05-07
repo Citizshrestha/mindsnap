@@ -1,0 +1,102 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: linear-gradient(135deg, #2B0889, #080429);
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+#root {
+  text-align: center;
+  width: 100%;
+}
+
+.phoneContainer {
+  width: 300px;
+  height: 550px;
+  border: 0px solid #452f82;
+  border-radius: 40px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  margin-right: 50px;
+  position: relative;
+  background: linear-gradient(135deg, #080429, #2B0889);
+}
+
+.phone-screen {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  box-sizing: border-box;
+}
+
+.phone-screen img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  scale: 1.16;
+  margin-top: 22px;
+  margin-left: -.3px;
+}
+
+.phone-screen-content {
+  width: 100%;
+  max-width: 250px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.formContainer {
+  background: linear-gradient(135deg, #16024B, #0A0130);
+  padding: 1rem;
+  border: 4px solid #230773;
+  border-radius: 1rem;
+  width: 300px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.form-group {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.login-btn, .register-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.login-btn {
+  background: linear-gradient(to right, #4fc3f7, #2196f3);
+  color: white;
+}
+
+.register-btn {
+  background: transparent;
+  color: #bbb;
+}
+
+
+
+
+
+input {
+  background-color: #20035F;
+}
+
+.regBtn {
+  background-color: transparent;
+}

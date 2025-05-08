@@ -16,7 +16,7 @@ export const transporter = nodemailer.createTransport({
 
 const mailOptions = {
   from: process.env.SENDER_EMAIL,
-  to: 'citizshrestha17@gmail.com',
+  to: 'test@lamk.com',
   subject: 'Test Email from Brevo',
   text: 'This is a test email to verify SMTP credentials.',
 };

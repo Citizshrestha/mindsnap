@@ -202,6 +202,75 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   });
 });
 
+// @route POST /api/auth/isAuth
+export const isAuthenticated = asyncHandler(async (req,res) => {
+   try {
+      return res.status(200).json({success: true, message: "User is Authenticated"})
+   } catch (error) {
+     res.json({success: false, message: error.message})
+   }
+})
+
+// @route POST /api/auth/sendResetOtp
+export const sendResetOtp = asyncHandler(async(req,res) => {
+    if (!req.body || Object.keys(req.body).length === 0){
+      return res.status(400).json({
+        success: false,
+        message: "Request body is empty or Invalid Please recheck"
+      })
+    }
+
+    const {email}  =  req.body;
+
+    if (!email){
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email or email is empty"
+      })
+    }
+
+    const user = await User.findOne({email});
+
+    if (!user){
+      return res.status(404).json({
+        success: false,
+        message: "User not found" 
+      })
+    }
+
+    const otp = String(Math.floor(100000+Math.random() * 900000));
+    user.resetOtp = otp;
+    user.resetOtpExpireAt = Date.now() + 15*60*1000  // 15mins
+    await user.save();
+
+    const mailOptions = {
+      from: process.env.SENDER_EMAIL,
+      to: user.email,
+      subject: `🔒 MindSnap Password Reset OTP 🔑`,
+      text: `
+  Hi ${user.username}, 👋
+  
+  We received a request to reset your MindSnap password. 🔐
+  Please use the OTP below to proceed:
+  
+  🔢 OTP: ${otp}
+  
+  This OTP is valid for the next 15 minutes. ⏰
+  If you didn't request a password reset, please contact us at ${process.env.SUPPORT_EMAIL}. 🚨
+  
+  Stay secure,
+  The MindSnap Team 🚀
+      `,
+    };
+
+    const emailResult = await sendEmail(mailOptions);
+
+    return res.status(200).json({
+      success: true,
+      message:  "OTP Sent to your Email Successfully",
+    })
+})
+
 // @route POST /api/auth/logout
 export const logoutUser = asyncHandler(async (req, res) => {
   res.cookie("token", "", {
@@ -214,3 +283,4 @@ export const logoutUser = asyncHandler(async (req, res) => {
     message: "Logout successful",
   });
 });
+

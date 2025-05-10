@@ -1,43 +1,102 @@
-import logoImg from "../../../public/images/logoImg.png";
-import socialImage from "../../../public/images/Screenshot 2025-05-08 132825.png";
-import "./register.css";
+// src/components/Register/RegisterForm.tsx
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
+import { register } from '../../api/auth';
+import './register.css';
+
+type FormData = {
+  fullName: string;
+  username: string;
+  email: string;
+  password: string;
+};
 
 const RegisterForm = () => {
+  const [formData, setFormData] = useState<FormData>({
+    fullName: '',
+    username: '',
+    email: '',
+    password: '',
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    setError(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      if (!formData.fullName || !formData.username || !formData.email || !formData.password) {
+        throw new Error('Please fill in all fields');
+      }
+
+      const response = await register(formData.fullName, formData.username, formData.email, formData.password);
+      localStorage.setItem('accessToken', response.token);
+      localStorage.setItem('userId', response._id);
+      toast.success('Registration successful! Please verify your email.');
+      navigate('/home');
+    } catch (err: unknown) {
+      const errorMessage =  
+        err  instanceof Error && err.message? err.message :'An unexpected error occurred. Please try again.';
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const togglePasswordVisibility = () => {
+    setShowPassword((prev) => !prev);
+  };
+
+  const handleLoginClick = () => {
+    navigate('/');
+  };
+
   return (
     <div className="flex items-center justify-center w-full h-screen text-white">
       <div className="illustration w-1/2 flex justify-center items-center">
         <img
-          src={socialImage}
+          src="/images/Screenshot 2025-05-08 132825.png"
           alt="Illustration"
-          className="w-full h-full object-contain"
+          className="illustration-image w-full h-full object-contain"
         />
       </div>
       <div className="form-container w-1/2 p-8 flex flex-col items-center">
         <div className="flex items-center mb-8">
           <div className="w-20 h-20 mr-4">
-            <img
-              src={logoImg}
-              alt="MindSnap Logo"
-              className="w-full h-full object-cover rounded-full"
-            />
+            <img src="/images/logoImg.png" alt="MindSnap Logo" className="w-full h-full object-cover rounded-full" />
           </div>
           <h1 className="text-5xl font-bold">MindSnap</h1>
         </div>
         <div className="formHeader flex justify-between gap-10 mb-5">
-          <a
+          <button
             className="loginToggle text-white text-lg font-semibold rounded-lg px-4 py-2 hover:bg-gray-700 transition-colors"
-            href="#"
+            onClick={handleLoginClick}
           >
             Log in
-          </a>
-          <a
+          </button>
+          <button
             className="registerToggle bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg px-4 py-2 hover:from-blue-600 hover:to-purple-600 transition-colors"
-            href="#"
+            disabled
           >
             Register
-          </a>
+          </button>
         </div>
-        <div className="w-72">
+        <form onSubmit={handleSubmit} className="w-72">
           <div className="relative mb-6">
             <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-400">
               <svg
@@ -57,7 +116,10 @@ const RegisterForm = () => {
             </div>
             <input
               type="text"
+              name="fullName"
               placeholder="Full Name"
+              value={formData.fullName}
+              onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
             />
           </div>
@@ -71,21 +133,16 @@ const RegisterForm = () => {
                 stroke="currentColor"
                 strokeWidth={2}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 4a4 4 0 110 8 4 4 0 010-8z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 20v-2a6 6 0 0112 0v2"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4a4 4 0 110 8 4 4 0 010-8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 20v-2a6 6 0 0112 0v2" />
               </svg>
             </div>
             <input
               type="text"
+              name="username"
               placeholder="Username"
+              value={formData.username}
+              onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
             />
           </div>
@@ -103,7 +160,10 @@ const RegisterForm = () => {
             </div>
             <input
               type="email"
+              name="email"
               placeholder="Email"
+              value={formData.email}
+              onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
             />
           </div>
@@ -125,24 +185,40 @@ const RegisterForm = () => {
               </svg>
             </div>
             <input
-              type="password"
+              type={showPassword ? 'text' : 'password'}
+              name="password"
               placeholder="Password"
+              value={formData.password}
+              onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
             />
+            <button
+              type="button"
+              onClick={togglePasswordVisibility}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-400"
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
           </div>
-          <button className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg mb-4 duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50">
-            Sign Up
+          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg mb-4 duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 disabled:opacity-50"
+          >
+            {isLoading ? 'Registering...' : 'Sign Up'}
           </button>
           <p className="text-white text-center text-sm pl-2">
-            Have an account?{" "}
-            <a
+            Have an account?{' '}
+            <button
+              type="button"
+              onClick={handleLoginClick}
               className="text-pink-500 font-semibold underline-offset-2 hover:underline hover:scale-110 transition-all duration-200"
-              href="#"
             >
               Log in
-            </a>
+            </button>
           </p>
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -1,0 +1,17 @@
+.search-input:-webkit-autofill,
+.search-input:-webkit-autofill:hover,
+.search-input:-webkit-autofill:focus,
+.search-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #f0f2f5 inset !important; /* Match the parent background */
+  -webkit-text-fill-color: #1f2937 !important; /* Match text-gray-900 */
+  transition: background-color 5000s ease-in-out 0s !important;
+}
+
+.search-input::selection {
+  background: transparent !important; /* Remove selection background */
+  color: #1f2937 !important; /* Match text-gray-900 */
+}
+
+.search-input::placeholder {
+  background: transparent !important; /* Ensure placeholder has no background */
+}

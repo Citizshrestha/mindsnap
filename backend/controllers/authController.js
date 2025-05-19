@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { transporter } from "../config/nodemailer.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokenUtils.js";
-
 // Generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -29,15 +28,24 @@ const sendEmail = async (mailOptions) => {
 
 // @route POST /api/auth/register
 export const registerUser = asyncHandler(async (req, res) => {
-  const {fullname, username, email, password } = req.body;
+  const { fullname, username, email, password } = req.body;
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 6 characters long",
+    });
+  }
 
   const userExists = await User.findOne({ email });
   if (userExists) {
-    res.status(400);
-    throw new Error("User already exists");
+    return res.status(400).json({
+      success: false,
+      message: "User already exists",
+    });
   }
 
-  const user = await User.create({ fullname,username, email, password });
+  const user = await User.create({ fullname, username, email, password });
 
   const mailOptions = {
     from: process.env.SENDER_EMAIL,
@@ -78,15 +86,22 @@ export const loginUser = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email });
 
-  if (!user || !(await user.matchPassword(password))) {
-    res.status(401);
-    throw new Error("Invalid credentials");
+   if (!user) {
+    return res.status(400).json({
+      success:  false,
+      message: "Email is not registered. Please register First"
+    })
+   }
+  if (!(await user.matchPassword(password))) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid credentials. Please try again",
+    });
   }
 
   const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
-  // Store refresh token as cookie
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -126,9 +141,22 @@ export const sendOtpEmailVerification = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "User is already verified" });
   }
 
+  const otpStatus = user.canSendOtp();
+
+  if (!otpStatus.canSend) {
+    return res.status(429).json({
+      success: false,
+      message: `Too many OTP requests from ${user.email}. Please try again in ${otpStatus.timeLeft} minutes.`,
+      attemptsLeft: otpStatus.attemptsLeft,
+      nextAttempt: new Date(user.lastOtpAttempt + 60 * 60 * 1000),
+    });
+  }
+
   const otp = String(Math.floor(100000 + Math.random() * 900000));
   user.verifyOtp = otp;
   user.verifyOtpExpireAt = Date.now() + 24 * 60 * 60 * 1000;
+  user.otpAttempts += 1;
+  user.lastOtpAttempt = Date.now();
   await user.save();
 
   const mailOptions = {
@@ -156,9 +184,10 @@ The MindSnap Team 🚀
   return res.status(200).json({
     success: true,
     message: emailResult.message,
+    attemptsLeft: 3 - user.otpAttempts,
+    nextAttempt: new Date(user.lastOtpAttempt + 60 * 60 * 1000),
   });
 });
-
 
 // @route POST /api/auth/verifyEmail
 export const verifyEmail = asyncHandler(async (req, res) => {
@@ -197,7 +226,6 @@ export const verifyEmail = asyncHandler(async (req, res) => {
   user.isAccountVerified = true;
   user.verifyOtp = "";
   user.verifyOtpExpireAt = 0;
-
   await user.save();
 
   return res.status(200).json({
@@ -207,20 +235,20 @@ export const verifyEmail = asyncHandler(async (req, res) => {
 });
 
 // @route POST /api/auth/isAuth
-export const isAuthenticated = asyncHandler(async (req,res) => {
-   try {
-      return res.status(200).json({success: true, message: "User is Authenticated"})
-   } catch (error) {
-     res.json({success: false, message: error.message})
-   }
-})
+export const isAuthenticated = asyncHandler(async (req, res) => {
+  try {
+    return res.status(200).json({ success: true, message: "User is Authenticated" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // @route POST /api/auth/sendResetPasswordOtp
 export const sendResetPasswordOtp = asyncHandler(async (req, res) => {
   if (!req.body || Object.keys(req.body).length === 0) {
     return res.status(400).json({
       success: false,
-      message: "Request body is empty or invalid. Please recheck."
+      message: "Request body is empty or invalid. Please check again.",
     });
   }
 
@@ -229,24 +257,41 @@ export const sendResetPasswordOtp = asyncHandler(async (req, res) => {
   if (!email) {
     return res.status(400).json({
       success: false,
-      message: "Invalid email or email is empty."
+      message: "Email is required.",
     });
   }
 
   const user = await User.findOne({ email });
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found. Please register first.",
+    });
+  }
 
-  if (user) {
-    // Generate a 6-digit OTP as a string
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
-    user.resetOtp = otp;
-    user.resetOtpExpireAt = Date.now() + 15 * 60 * 1000; // 15 mins
-    await user.save();
+  const otpStatus = user.canSendOtp();
 
-    const mailOptions = {
-      from: process.env.SENDER_EMAIL,
-      to: user.email,
-      subject: `🔒 MindSnap Password Reset OTP 🔑`,
-      text: `
+  if (!otpStatus.canSend) {
+    return res.status(429).json({
+      success: false,
+      message: `Too many OTP requests from ${user.email}. Please try again in ${otpStatus.timeLeft} minutes.`,
+      attemptsLeft: otpStatus.attemptsLeft,
+      nextAttempt: new Date(user.lastOtpAttempt + 60 * 60 * 1000),
+    });
+  }
+
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  user.resetOtp = otp;
+  user.resetOtpExpireAt = Date.now() + 15 * 60 * 1000; // 15 mins
+  user.otpAttempts += 1;
+  user.lastOtpAttempt = Date.now();
+  await user.save();
+
+  const mailOptions = {
+    from: process.env.SENDER_EMAIL,
+    to: user.email,
+    subject: `🔒 MindSnap Password Reset OTP 🔑`,
+    text: `
 Hi ${user.username}, 👋
 
 We received a request to reset your MindSnap password. 🔐
@@ -259,84 +304,34 @@ If you didn't request a password reset, please contact us at ${process.env.SUPPO
 
 Stay secure,
 The MindSnap Team 🚀
-      `,
-    };
+    `,
+  };
 
-    try {
-      await sendEmail(mailOptions);
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to send OTP email. Please try again later."
-      });
-    }
+  try {
+    await sendEmail(mailOptions);
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send OTP email. Please try again later.",
+    });
   }
 
   return res.status(200).json({
     success: true,
-    message: "If an account with this email exists, an OTP has been sent."
+    message: "If an account with this email exists, an OTP has been sent.",
+    userId: user._id,
+    attemptsLeft: 3 - user.otpAttempts,
+    nextAttempt: new Date(user.lastOtpAttempt + 60 * 60 * 1000),
   });
 });
 
 // @route POST /api/auth/verifyResetPasswordOtp
-export const verifyResetPasswordOtp = asyncHandler(async(req,res) => {
-  const {userId, otp} = req.body;
+export const verifyResetPasswordOtp = asyncHandler(async (req, res) => {
+  const { userId, otp } = req.body;
   if (!userId || !otp) {
     return res.status(400).json({
       success: false,
-      message: "userId and OTP are required"
-    });
-  }
-  const user = await User.findById(userId);
-
-  if (!user){
-    return res.status(404).json({
-      success: false,
-      message: "User not found"
-    });
-  }
-
-  if (user.resetOtp !== otp){
-    return res.status(400).json({
-      success: false,
-      message: "Invalid OTP Please try again"
-    });
-  }
-
-  if (user.resetOtpExpireAt < Date.now()){
-    return res.status(400).json({
-      success: false,
-      message: "OTP has expired. Please request a new one."
-    })
-  }
-
-  user.resetOtp = "";
-  user.resetOtpExpireAt = 0;
-  await user.save();
-
-  return res.status(200).json({
-    success: true,
-    message: "OTP verified succesfully. You can now reset your password."
-  });
-  
-})
-
-// @route POST /api/auth/resetPassword
-export const resetPassword = asyncHandler(async (req, res) => {
-  const { userId, newPassword } = req.body;
-
-  // Validate required fields
-  if (!userId || !newPassword) {
-    return res.status(400).json({
-      success: false,
-      message: "userId and newPassword are required"
-    });
-  }
-
-  if (newPassword.length < 8) {
-    return res.status(400).json({
-      success: false,
-      message: "Password must be at least 8 characters long"
+      message: "UserId and OTP are required.",
     });
   }
 
@@ -345,37 +340,84 @@ export const resetPassword = asyncHandler(async (req, res) => {
   if (!user) {
     return res.status(404).json({
       success: false,
-      message: "User not found in DB"
+      message: "User not found.",
     });
   }
 
-  // Check if OTP verification was completed (optional, for added security)
-  if (user.resetOtp || user.resetOtpExpireAt !== 0) {
+  if (user.resetOtp !== otp) {
     return res.status(400).json({
       success: false,
-      message: "OTP verification required before resetting password"
+      message: "Invalid OTP. Please try again.",
     });
   }
 
-  
-  const isSamePassword = await user.matchPassword(newPassword);
-  if (isSamePassword) {
+  if (user.resetOtpExpireAt < Date.now()) {
     return res.status(400).json({
       success: false,
-      message: "New password cannot be the same as the old password"
+      message: "OTP has expired. Please request a new one.",
     });
   }
-  
 
-  user.password = newPassword;
   user.resetOtp = "";
   user.resetOtpExpireAt = 0;
-
   await user.save();
 
   return res.status(200).json({
     success: true,
-    message: "Password reset successfully"
+    message: "OTP verified successfully. You can now reset your password.",
+  });
+});
+
+// @route POST /api/auth/resetPassword
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { userId, newPassword } = req.body;
+
+  if (!userId || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "UserId and newPassword are required.",
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "Password must be at least 6 characters long.",
+    });
+  }
+
+  const user = await User.findById(userId);
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found.",
+    });
+  }
+
+  if (user.resetOtp || user.resetOtpExpireAt !== 0) {
+    return res.status(400).json({
+      success: false,
+      message: "OTP verification required before resetting password.",
+    });
+  }
+
+  const isSamePassword = await user.matchPassword(newPassword);
+  if (isSamePassword) {
+    return res.status(400).json({
+      success: false,
+      message: "New password cannot be the same as the old password.",
+    });
+  }
+
+  user.password = newPassword;
+  user.resetOtp = "";
+  user.resetOtpExpireAt = 0;
+  await user.save();
+
+  return res.status(200).json({
+    success: true,
+    message: "Password reset successfully.",
   });
 });
 
@@ -394,27 +436,26 @@ export const logoutUser = asyncHandler(async (req, res) => {
   });
 });
 
-
 // @route POST /api/auth/refresh
 export const refreshAccessToken = asyncHandler(async (req, res) => {
   const token = req.cookies.refreshToken;
 
-  if (!token){
+  if (!token) {
     return res.status(401).json({
       success: false,
       message: "No refresh token provided",
-    })
+    });
   }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
     const user = await User.findById(decoded.id);
 
-    if (!user){
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not Found"
-      })
+        message: "User not found.",
+      });
     }
 
     const newAccessToken = generateAccessToken(user._id);
@@ -422,12 +463,11 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
     return res.status(200).json({
       success: true,
       accessToken: newAccessToken,
-    })
+    });
   } catch (error) {
     return res.status(401).json({
       success: false,
-      message: "Invalid refresh Token",
-    })
-    
+      message: "Invalid refresh token.",
+    });
   }
-})
+});

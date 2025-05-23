@@ -2,9 +2,18 @@ import type React from 'react';
 import { FaHome,  FaEnvelope, FaPaintBrush, FaSignOutAlt, FaPodcast } from 'react-icons/fa';
 import { FiPlus } from 'react-icons/fi';
 import { useLocation, useNavigate } from 'react-router-dom';
-// import "./sidebar.css"
+import "./sidebar.css"
+import { useState } from 'react';
+import toyHome from "../../../public/images/toyhome.png"
+import posts from "../../../public/images/Posts.png"
+import createPost from "../../../public/images/CreatePosts.png"
+import messageImgIcon from "../../../public/images/messages.png"
+import themes from "../../../public/images/themes.png"
+import logout from "../../../public/images/logout.png"
 
 const Sidebar = () => {
+
+  const [imgErr, setImgErr] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -33,10 +42,10 @@ const linkStyle = (path: string): React.CSSProperties => ({
   borderTopRightRadius : "90px",
   borderTopLeftRadius : "56px",
   borderBottomLeftRadius : "56px",
-  borderBottomRightRadius : "70px",
+  borderBottomRightRadius : "none",
   width : "230px",
-  background: location.pathname === path ? "#fff" : "transparent",
-  color: location.pathname === path ? "#611DD0" : "#fff",
+  background: location.pathname === path ? "#F5F6FA" : "transparent",
+  color: location.pathname === path ? "#611DD0" : "#F5F6FA",
   fontSize: '19px',
 });
 
@@ -59,8 +68,19 @@ return (
           navigate('/home')
          }}
         >
-        <FaHome size={23.5} style={{ marginRight: '10px' }} /> Home
+         {imgErr ? (
+          <FaHome size={23.5} style={{ marginRight: '10px' }} />
+         ): (
+          <img src={toyHome} 
+          alt="Home Icon"
+            onError={() => setImgErr(true)} 
+             style={{ width: '38px', marginRight: '10px' }}
+          />
+         )
+         }
+         Home
       </a>
+     
       <a 
         href="/posts" 
         style={linkStyle('/posts')}
@@ -69,7 +89,17 @@ return (
           navigate('/posts');
         }}
         >
-        <FaPodcast size={23.5} style={{ marginRight: '10px' }} /> Posts
+         {imgErr ? (
+          <FaPodcast size={23.5} style={{ marginRight: '10px' }} />) : (
+            <img 
+            src={posts} 
+            alt="postsIcon" 
+              onError={() => setImgErr(true)}
+          style={{ width: '38px', marginRight: '10px' }}
+            />
+           
+          )}
+           Posts
       </a>
       <a 
         href="/create-post" 
@@ -80,7 +110,17 @@ return (
           navigate('/create-post')
         }}
         >
-        <FiPlus size={24} style={{ marginRight: '10px' }} /> Create Post
+         {imgErr ? (
+          <FiPlus size={24} style={{ marginRight: '10px' }} /> 
+         ) :(
+            <img 
+            src={createPost} 
+            alt="+ Create Post" 
+            onError={() => setImgErr(true)}
+            style={{width: "38px", marginRight: "10px"}}
+            />
+         )}
+         Create Post
       </a>
       <a 
         href="/messages" 
@@ -90,7 +130,17 @@ return (
           navigate('/messages')
         }}
         >
-        <FaEnvelope size={23.5} style={{ marginRight: '10px' }} /> Messages
+           {imgErr ? (
+             <FaEnvelope size={23.5} style={{ marginRight: '10px' }} />
+         ) :(
+            <img 
+            src={messageImgIcon} 
+            alt="Messages" 
+            onError={() => setImgErr(true)}
+            style={{width: "38px", marginRight: "10px"}}
+            />
+         )}
+        Messages
       </a>
       <a 
         href="/themes" 
@@ -100,7 +150,18 @@ return (
           navigate('/themes')
         }}
       >
-        <FaPaintBrush size={23.5} style={{ marginRight: '10px' }} /> Themes
+         {imgErr ? (
+                     <FaPaintBrush size={25} style={{ marginRight: '10px' }} /> 
+
+         ) :(
+            <img 
+            src={themes} 
+            alt="Themes" 
+            onError={() => setImgErr(true)}
+            style={{width: "38px", marginRight: "10px"}}
+            />
+         )}
+         Themes
       </a>
       <a 
         href="/logout" 
@@ -108,7 +169,17 @@ return (
         style={linkStyle('/logout')}
         onClick={handleLogout}
         >
-        <FaSignOutAlt size={23.5} style={{ marginRight: '10px' }} /> Logout
+           {imgErr ? (
+            <FaSignOutAlt size={23.5} style={{ marginRight: '10px' }} /> 
+         ) :(
+            <img 
+            src={logout} 
+            alt="Logout" 
+            onError={() => setImgErr(true)}
+            style={{width: "38px", marginRight: "10px"}}
+            />
+         )}
+         Logout
       </a>
     </div>
   </>

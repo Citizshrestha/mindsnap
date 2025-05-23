@@ -2,16 +2,77 @@
 .search-input:-webkit-autofill:hover,
 .search-input:-webkit-autofill:focus,
 .search-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px #f0f2f5 inset !important; /* Match the parent background */
-  -webkit-text-fill-color: #1f2937 !important; /* Match text-gray-900 */
+  -webkit-box-shadow: 0 0 0 30px #f0f2f5 inset !important;
+  -webkit-text-fill-color: #1f2937 !important;
   transition: background-color 5000s ease-in-out 0s !important;
 }
 
 .search-input::selection {
-  background: transparent !important; /* Remove selection background */
-  color: #1f2937 !important; /* Match text-gray-900 */
+  background: transparent !important;
+  color: #1f2937 !important;
 }
 
 .search-input::placeholder {
-  background: transparent !important; /* Ensure placeholder has no background */
+  background: transparent !important;
+}
+
+.link {
+  color: #fff;
+  text-decoration: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  transition: color 0.3s ease;
+  position: relative;
+}
+
+.link::after {
+  content: "";
+  width: 0;
+  height: 3px;
+  background-color: var(--underline-color);
+  display: block;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  transition: width 0.2s linear;
+  border-radius: 2px;
+}
+
+.link:hover {
+  color: var(--hover-color);
+}
+
+.link:hover::after {
+  width: 100%;
+}
+
+.link:hover .home-icon {
+  color: #00FFFF;
+}
+
+.home-icon {
+  color: #00FFFF;
+}
+
+.link:hover .profile-icon {
+  color: #FF00FF;
+}
+
+.profile-icon {
+  color: #FF00FF;
+}
+.connection-icon{
+  color: #0acedc;
+}
+.setting img{
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.setting:hover img{
+  transform: rotate(90deg);
+}
+.rocketLink:hover span{
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: rotate(50deg);
+
 }

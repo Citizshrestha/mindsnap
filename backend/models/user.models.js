@@ -22,11 +22,10 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, "Please enter a   password"],
+      required: [true, "Please enter a password"],
       minlength: 6,
       trim: true,
     },
-    bio: String,
     profilePicture: {
       type: String,
       default: "https://example.com/default-profile-picture.png",
@@ -45,7 +44,7 @@ const userSchema = new mongoose.Schema(
     ],
     verifyOtp: {
       type: String,
-      default: '',
+      default: "",
     },
     verifyOtpExpireAt: {
       type: Number,
@@ -61,8 +60,56 @@ const userSchema = new mongoose.Schema(
     },
     resetOtpExpireAt: {
       type: Number,
-      default: 0
+      default: 0,
     },
+    otpAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 3,
+    },
+    lastOtpAttempt: {
+      type: Date,
+      default: null,
+    },
+    postsCount: {
+      type: Number,
+      default: 0, 
+    },
+    storyHighlights: [
+      {
+        imageUrl: {
+          type: String,
+          required: true,
+        },
+        label: {
+          type: String,
+          required: true,
+        },
+      },
+    ],
+    vibe: {
+      type: String,
+      default: "", 
+    },
+    vibeDescription: {
+      type: String,
+      default: "", 
+    },
+    aboutMe: {
+      type: String,
+      default: "",
+    },
+    Posts: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Post", 
+      },
+    ],
+    postsCount: {
+      type: Number,
+      default: "0"
+    }
   },
   { timestamps: true }
 );
@@ -78,6 +125,30 @@ userSchema.pre("save", async function (next) {
 // Method to match passwords
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
+};
+
+// Method to check if OTP can be sent or not
+userSchema.methods.canSendOtp = function () {
+  const now = Date.now();
+  const oneHourInMs = 60 * 60 * 1000;
+  const oneHourAgo = now - oneHourInMs;
+
+  // Reset window if expired or first attempt
+  if (!this.lastOtpAttempt || this.lastOtpAttempt < oneHourAgo) {
+    this.otpAttempts = 0;
+    return { canSend: true, attemptsLeft: 3, timeLeft: 0 };
+  }
+
+  if (this.otpAttempts >= 3) {
+    const timeLeft = Math.max(0, Math.ceil(((this.lastOtpAttempt + oneHourInMs) - now) / (1000 * 60)));
+    return { canSend: false, attemptsLeft: 0, timeLeft };
+  }
+
+  return {
+    canSend: true,
+    attemptsLeft: 3 - this.otpAttempts,
+    timeLeft: 0,
+  };
 };
 
 export const User = mongoose.model("User", userSchema);

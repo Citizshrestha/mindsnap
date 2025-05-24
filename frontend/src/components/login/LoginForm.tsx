@@ -6,6 +6,7 @@ import { login } from '../../api/auth';
 import logoImg from '../../../public/images/logoImg.png';
 import mobilePic from '../../../public/images/mobilePic.png';
 import './login.css';
+import axios from 'axios';
 
 type FormData = {
   email: string;
@@ -23,6 +24,13 @@ const LoginForm = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.body.classList.add('componentBackground');
+    return () => {
+      document.body.classList.remove('componentBackground');
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -67,9 +75,19 @@ const LoginForm = () => {
       toast.success('Login successful!');
       navigate('/home');
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error && err.message? err.message : 'An unexpected error occurred. Please try again.';
-      setError(errorMessage);
+      let errorMessage = 'An unexpected error occurred. Please try again.';
+      if (axios.isAxiosError(err)){
+        if (err.response){
+            errorMessage = err.response?.data?.message || "Invalid Credentials";
+        } else if (err.request){
+          errorMessage = "Network Error please check your connection"
+        } else {
+          errorMessage = err.message || errorMessage;
+        }
+      }
+      setError(errorMessage)
       toast.error(errorMessage);
+      console.error("Login error",err)
     } finally {
       setIsLoading(false);
     }

@@ -1,13 +1,14 @@
-body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    background: linear-gradient(135deg, #2B0889, #080429);
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-  }
+
+  .mainContainer{
+   margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: linear-gradient(135deg, #2B0889, #080429);
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
   #root {
     text-align: center;
     width: 80%;
@@ -26,4 +27,21 @@ body {
   .illustration-placeholder img {
     border-radius: 40px;
   }
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: #ffffff !important;
+  background-color: #20035F !important;
+  border: 2px solid #4b5563 !important;
+  border-radius: 0.5rem !important;
+  -webkit-box-shadow: 0 0 0 1000px #20035F inset !important;
+  transition: border-color 0.2s;
+}
 
+input:-webkit-autofill:focus {
+  border-color: #3b82f6 !important;
+}
+
+
+  

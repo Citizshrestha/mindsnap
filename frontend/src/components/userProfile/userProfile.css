@@ -1,0 +1,76 @@
+/* Custom overrides for themes and hidden scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+/* Story highlight styling */
+.stories {
+  position: relative;
+  transition: transform 0.2s;
+}
+
+.stories:hover {
+  transform: scale(1.05);
+}
+
+/* Highlight Haven title styling */
+.highlight-haven-title {
+  font-style: italic;
+}
+
+/* Ensure text readability in BluePurple theme */
+.theme-bluepurple .text-black {
+  color: #fff !important;
+}
+
+.theme-bluepurple .text-gray-900 {
+  color: #fff !important;
+}
+
+/* Cursive font for labels */
+@font-face {
+  font-family: "Cursive";
+  src: url("https://fonts.cdnfonts.com/s/17877/GreatVibes-Regular.woff") format("woff");
+}
+
+.font-cursive {
+  font-family: "Cursive", cursive;
+}
+
+/* Poppins font for consistency */
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap");
+
+.font-poppins {
+  font-family: "Poppins", sans-serif;
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 5px;
+  background: #d3d3d3;
+  outline: none;
+  border-radius: 5px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  background: #611DD0;
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  background: #611DD0;
+  cursor: pointer;
+  border-radius: 50%;
+}

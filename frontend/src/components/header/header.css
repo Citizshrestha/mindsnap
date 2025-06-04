@@ -2,8 +2,10 @@
 .search-input:-webkit-autofill:hover,
 .search-input:-webkit-autofill:focus,
 .search-input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 30px #f0f2f5 inset !important;
+  -webkit-box-shadow: 0 0 0 30px #f0f2f5 inset !important; 
   -webkit-text-fill-color: #1f2937 !important;
+  border: 0px solid #fff !important; 
+  outline: none !important; 
   transition: background-color 5000s ease-in-out 0s !important;
 }
 
@@ -69,10 +71,16 @@
 }
 
 .setting:hover img{
-  transform: rotate(90deg);
+  transform: rotate(100deg);
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+
+}
+.rocketIcon{
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: rotate(30deg);
 }
 .rocketLink:hover span{
   transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  transform: rotate(50deg);
+  transform: rotate(-10deg);
 
 }

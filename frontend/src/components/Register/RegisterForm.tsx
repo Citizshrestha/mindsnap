@@ -5,6 +5,9 @@ import { toast } from "react-toastify";
 import { register } from "../../api/auth";
 import "./register.css";
 import axios from "axios";
+import landingPageImg from "../../../public/images/SocialMediaConnection.png"
+import logoImg from '../../../public/images/mindsnap logo.png';
+
 
 type FormData = {
   fullName: string;
@@ -47,12 +50,7 @@ const RegisterForm = () => {
     setError(null);
 
     try {
-      if (
-        !formData.fullName ||
-        !formData.username ||
-        !formData.email ||
-        !formData.password
-      ) {
+      if (!formData.fullName || !formData.username || !formData.email || !formData.password) {
         throw new Error("Please fill in all fields");
       }
 
@@ -68,8 +66,8 @@ const RegisterForm = () => {
       );
       localStorage.setItem("accessToken", response.token);
       localStorage.setItem("userId", response._id);
-      toast.success("Registration successful! Please verify your email.");
-      navigate("/home");
+      toast.success("Registration successful! You can Login now.");
+      navigate("/");
     } catch (err: unknown) {
       let errorMessage = "An unexpected error occurred. Please try again.";
 
@@ -106,16 +104,16 @@ const RegisterForm = () => {
     <div className="mainContainer flex items-center justify-center w-full h-screen text-white">
       <div className="illustration w-1/2 flex justify-center items-center">
         <img
-          src="/images/Screenshot 2025-05-08 132825.png"
+          src={landingPageImg}
           alt="Illustration"
-          className="illustration-image w-full h-full object-contain"
+          className="illustration-image ml-20 mt-8 w-full h-full object-contain"
         />
       </div>
       <div className="form-container w-1/2 p-8 flex flex-col items-center">
         <div className="flex items-center mb-8">
-          <div className="w-20 h-20 mr-4">
+          <div className="w-25 h-25 mr-2">
             <img
-              src="/images/logoImg.png"
+              src={logoImg}
               alt="MindSnap Logo"
               className="w-full h-full object-cover rounded-full"
             />

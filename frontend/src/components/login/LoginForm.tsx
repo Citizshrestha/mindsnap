@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { login } from '../../api/auth';
-import logoImg from '../../../public/images/logoImg.png';
+import logoImg from '../../../public/images/mindsnap logo.png';
 import mobilePic from '../../../public/images/mobilePic.png';
 import './login.css';
 import axios from 'axios';
@@ -108,7 +108,7 @@ const LoginForm = () => {
   return (
     <div className="flex flex-col items-center justify-center text-white">
       <div className="flex items-center mb-8">
-        <div className="w-20 h-20 mr-10">
+        <div className="w-25 h-25 ">
           <img src={logoImg} alt="SnapMind Logo" className="w-full h-full object-cover rounded-full" />
         </div>
         <h1 className="text-5xl font-bold font-['Lora']">MindSnap</h1>

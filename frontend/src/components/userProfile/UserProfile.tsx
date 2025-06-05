@@ -1,30 +1,45 @@
-import {useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./userProfile.css";
 import axiosClient from "../../api/axiosClient";
 import { useSelector, useDispatch } from "react-redux";
 import { setUsername, setProfilePicture } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
 import { useNavigate } from "react-router-dom";
+import defaultAvatar from "../../../public/images/coverImage.png";
 
 const UserProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { profilePicture, username } = useSelector((state: RootState) => state.user);
+  const { profilePicture, username } = useSelector(
+    (state: RootState) => state.user
+  );
   const [fullname, setFullname] = useState("");
   const [error, setError] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [vibe, setVibe] = useState("");
   const [vibeDescription, setVibeDescription] = useState("");
   const [postsCount, setPostsCount] = useState(0);
-  const [currentSong, setCurrentSong] = useState<{ title: string; url: string } | null>(null);
+  const [currentSong, setCurrentSong] = useState<{
+    title: string;
+    url: string;
+  } | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [volume, setVolume] = useState(0.5); 
+  const [volume, setVolume] = useState(0.5);
   const audioRef = useRef<HTMLAudioElement>(null);
   const navigate = useNavigate();
 
   const loFiSongs = [
-    { title: "Evening Flow - LoFi Chill Mix", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
-    { title: "Rainy Day Vibes", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
-    { title: "Cozy Cafe Ambience", url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3" },
+    {
+      title: "Evening Flow - LoFi Chill Mix",
+      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    },
+    {
+      title: "Rainy Day Vibes",
+      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    },
+    {
+      title: "Cozy Cafe Ambience",
+      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    },
   ];
 
   useEffect(() => {
@@ -38,8 +53,10 @@ const UserProfile: React.FC = () => {
 
         const response = await axiosClient.get("/api/users/profile");
         setFullname(response.data.fullname || "");
-        if (response.data.username) dispatch(setUsername(response.data.username));
-        if (response.data.profilePicture) dispatch(setProfilePicture(response.data.profilePicture));
+        if (response.data.username)
+          dispatch(setUsername(response.data.username));
+        if (response.data.profilePicture)
+          dispatch(setProfilePicture(response.data.profilePicture));
         setAboutMe(response.data.aboutMe || "");
         setVibe(response.data.vibe || "");
         setVibeDescription(response.data.vibeDescription || "");
@@ -57,7 +74,7 @@ const UserProfile: React.FC = () => {
     }
   }, [volume]);
 
-const handlePlayPause = (song: { title: string; url: string }) => {
+  const handlePlayPause = (song: { title: string; url: string }) => {
     if (currentSong?.title === song.title && isPlaying) {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -66,7 +83,7 @@ const handlePlayPause = (song: { title: string; url: string }) => {
       return;
     }
 
-  if (audioRef.current) {
+    if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
 
@@ -92,20 +109,19 @@ const handlePlayPause = (song: { title: string; url: string }) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
   };
-  
+
   const handleEditProfile = () => {
-     navigate('/edit-userprofile');
-  }
+    navigate("/edit-userprofile");
+  };
 
   if (error) {
     return <div>{error}</div>;
   }
 
-
   return (
     <div className="flex mt-18 items-center text-left relative">
       <div className="ml-[95px] mt-10 w-[75%] p-5 bg-white rounded-2xl text-inherit font-poppins overflow-y-auto h-[calc(100vh-80px)] scrollbar-hide">
-        <div className="flex items-center mb-6">
+        {/* <div className="flex items-center mb-6">
           <img
             src={profilePicture}
             alt="profilePic"
@@ -136,13 +152,78 @@ const handlePlayPause = (song: { title: string; url: string }) => {
             <h2 className="text-xl font-semibold">842</h2>
             <p className="text-sm">Following</p>
           </div>
+        </div> */}
+
+        <div className="flex items-center mb-10 relative">
+          <div className="profileSection w-full">
+            {/* Cover Image with gradient overlay */}
+            <div className="relative h-[250px] w-full rounded-2xl overflow-hidden shadow-lg">
+              <img
+                src={defaultAvatar}
+                className="h-full w-full object-cover"
+                alt="cover"
+              />
+            </div>
+
+            {/* Profile Image - overlaps cover */}
+            <div className="absolute left-56 bottom-28 z-10">
+              <div className="rounded-full ml-25 border-4 border-white shadow-xl bg-gradient-to-tr from-[#A084E8] to-[#611DD0] p-1">
+                <img
+                  src={profilePicture}
+                  alt="profilePic"
+                  className="w-42 h-42 rounded-full object-cover bg-white"
+                  onError={(e: React.SyntheticEvent<HTMLImageElement>) =>
+                    (e.currentTarget.src = "../../../public/images/default.jpg")
+                  }
+                />
+              </div>
+            </div>
+
+            {/* Profile Info and Edit Button */}
+            <div className="flex flex-col md:flex-row items-center justify-between mt-25 px-8">
+              <div className="flex flex-col items-start">
+                <h1 className="text-3xl font-bold text-[#611DD0] drop-shadow-sm">
+                  {fullname}
+                </h1>
+                <p className="text-lg text-gray-500 font-medium mb-2">
+                  @{username}
+                </p>
+                <button 
+                onClick={handleEditProfile}
+                className="mt-2 bg-gradient-to-r from-[#611DD0] to-[#A084E8] text-white rounded-full px-6 py-2 font-semibold shadow hover:scale-105 transition">
+                  Edit Profile
+                </button>
+              </div>
+              {/* Stats Card */}
+              <div className="flex bg-white/70 backdrop-blur-md rounded-2xl shadow-lg px-10 py-6 gap-12 mt-6 md:mt-0">
+                <div className="flex flex-col items-center">
+                  <h2 className="text-2xl font-bold text-[#611DD0]">{postsCount}</h2>
+                  <p className="text-gray-600 font-medium">Posts</p>
+                </div>
+                <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
+                <div className="flex flex-col items-center">
+                  <h2 className="text-2xl font-bold text-[#611DD0]">5,217</h2>
+                  <p className="text-gray-600 font-medium">Followers</p>
+                </div>
+                <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
+                <div className="flex flex-col items-center">
+                  <h2 className="text-2xl font-bold text-[#611DD0]">50</h2>
+                  <p className="text-gray-600 font-medium">Following</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="mb-6 text-center">
-          <h3 className="text-[21px] font-semibold mb-2 text-[#6B46C1] highlight-haven-title">
-            Highlight Haven
+        <div className="mb-12 text-center">
+          <h3 className="text-[21px] flex items-center justify-center gap-2  font-semibold mb-2 text-[#6B46C1] highlight-haven-title">
+            Highlight Haven{" "}
+            {
+              <p className="text-sm pt-3 mt-1 mb-4 text-[#A0AEC0]">
+                (Showcase Your Stories)
+              </p>
+            }
           </h3>
-          <p className="text-sm mb-4 text-[#A0AEC0]">Showcase Your Stories</p>
           <div className="flex gap-4 overflow-x-auto scrollbar-hide">
             <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
               <img
@@ -211,7 +292,9 @@ const handlePlayPause = (song: { title: string; url: string }) => {
             </button>
           </div>
           <div className="flex-1">
-            <h3 className="text-[1.1rem] text-[#1438A6] font-semibold">About Me</h3>
+            <h3 className="text-[1.1rem] text-[#1438A6] font-semibold">
+              About Me
+            </h3>
             <p className="text-gray-900">{aboutMe}</p>
           </div>
         </div>
@@ -252,29 +335,41 @@ const handlePlayPause = (song: { title: string; url: string }) => {
       </div>
       <div className="mood-maker w-[10%] mr-5 absolute right-10 top-12">
         <div className="daily-motivation ml-2 w-[320px] p-4 bg-white rounded-2xl shadow">
-          <h3 className="text-xl font-semibold text-black mb-2">💡Daily Motivation</h3>
-          <p className="text-gray-600 italic">"You don’t have to be extreme, just consistent."</p>
+          <h3 className="text-xl font-semibold text-black mb-2">
+            💡Daily Motivation
+          </h3>
+          <p className="text-gray-600 italic">
+            "You don’t have to be extreme, just consistent."
+          </p>
           <p className="text-gray-500 ml-10 pl-40 mt-1">-Unknown</p>
         </div>
         <div className="mood-booster ml-2 w-[320px] mt-5 p-4 bg-white rounded-2xl shadow">
-          <h3 className="text-xl font-semibold text-pink-600 mb-2">Mood Booster</h3>
+          <h3 className="text-xl font-semibold text-pink-600 mb-2">
+            Mood Booster
+          </h3>
           <p className="text-gray-600">How are you feeling today?</p>
           <div className="flex justify-around mt-2">
             <span>😊</span>
             <span>😐</span>
             <span>😢</span>
           </div>
-          <p className="text-gray-600 mt-2 italic">"It’s okay to pause. Breathe. Reset."</p>
+          <p className="text-gray-600 mt-2 italic">
+            "It’s okay to pause. Breathe. Reset."
+          </p>
         </div>
         <div className="taskRecommendation w-[320px] ml-2 mt-5 p-4 bg-white rounded-2xl shadow">
-          <h3 className="text-xl font-semibold text-green-600 mb-2">Little Joy of the Day</h3>
+          <h3 className="text-xl font-semibold text-green-600 mb-2">
+            Little Joy of the Day
+          </h3>
           <ul className="text-gray-600 list-disc pl-5">
             <li>Compliment someone today.</li>
             <li>Go outside and feel the sun.</li>
           </ul>
         </div>
         <div className="chill-corner text-center ml-2 p-4 w-[320px] bg-white mt-5 rounded-2xl shadow">
-          <h3 className="text-xl font-semibold text-purple-600 mb-2">🎧Chill Corner</h3>
+          <h3 className="text-xl font-semibold text-purple-600 mb-2">
+            🎧Chill Corner
+          </h3>
           {loFiSongs.map((song, index) => (
             <div key={index} className="mb-2">
               <p className="text-gray-600">
@@ -287,7 +382,9 @@ const handlePlayPause = (song: { title: string; url: string }) => {
                 onClick={() => handlePlayPause(song)}
                 className="mt-1 bg-purple-600 text-white px-4 py-2 rounded-full"
               >
-                {currentSong?.title === song.title && isPlaying ? "Pause" : "Play"}
+                {currentSong?.title === song.title && isPlaying
+                  ? "Pause"
+                  : "Play"}
               </button>
             </div>
           ))}

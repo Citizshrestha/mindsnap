@@ -164,23 +164,23 @@ const Header: React.FC = () => {
           href="/home"
           style={
             {
-              "--underline-color": "#DC6009",
-              "--hover-color": "#DC6009",
+              "--underline-color": "#FFF0F5",
+              "--hover-color": "#FFF0F5",
             } as React.CSSProperties
           }
           onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#DC6009";
+            e.currentTarget.style.color = "#FFF0F5";
             (e.currentTarget.querySelector(
               ".home-icon"
-            ) as HTMLElement)!.style.color = "#DC6009";
-            e.currentTarget.style.setProperty("--underline-color", "#DC6009");
+            ) as HTMLElement)!.style.color = "#FFF0F5";
+            e.currentTarget.style.setProperty("--underline-color", "#FFF0F5");
           }}
           onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
             e.currentTarget.style.color = "#fff";
             (e.currentTarget.querySelector(
               ".home-icon"
             ) as HTMLElement)!.style.color = "#00FFFF";
-            e.currentTarget.style.setProperty("--underline-color", "#DC6009");
+            e.currentTarget.style.setProperty("--underline-color", "#FFF0F5");
           }}
         >
           <FiHome size={20} className="home-icon" />
@@ -222,17 +222,17 @@ const Header: React.FC = () => {
           className="link rocketLink text-white flex mt-4  mx-2 items-center"
           style={
             {
-              "--underline-color": "#67E8F9",
-              "--hover-color": "#67E8F9",
+              "--underline-color": "#FF6347",
+              "--hover-color": "#FF6347",
             } as React.CSSProperties
           }
           onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#67E8F9";
-            e.currentTarget.style.setProperty("--underline-color", "#67E8F9");
+            e.currentTarget.style.color = "#FF6347";
+            e.currentTarget.style.setProperty("--underline-color", "#FF6347");
           }}
           onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
             e.currentTarget.style.color = "#fff";
-            e.currentTarget.style.setProperty("--underline-color", "#67E8F9");
+            e.currentTarget.style.setProperty("--underline-color", "#FF6347");
           }}
         >
           <span className="text-xl rocketIcon">🚀</span>
@@ -245,17 +245,17 @@ const Header: React.FC = () => {
           className="link text-white flex mt-4  mx-2 items-center"
           style={
             {
-              "--underline-color": "#A3E635",
-              "--hover-color": "#A3E635",
+              "--underline-color": "#0ACEDC",
+              "--hover-color": "#0ACEDC",
             } as React.CSSProperties
           }
           onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#A3E635";
-            e.currentTarget.style.setProperty("--underline-color", "#A3E635");
+            e.currentTarget.style.color = "#0ACEDC";
+            e.currentTarget.style.setProperty("--underline-color", "#0ACEDC");
           }}
           onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
             e.currentTarget.style.color = "#fff";
-            e.currentTarget.style.setProperty("--underline-color", "#A3E635");
+            e.currentTarget.style.setProperty("--underline-color", "#0ACEDC");
           }}
         >
           <MdPersonAdd size={22} className="connection-icon" />

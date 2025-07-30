@@ -11,12 +11,18 @@ const protect = asyncHandler(async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
       req.user = await User.findById(decoded.id).select('-password');
       if (!req.user) {
-        return res.status(401).json({ success: false, message: 'User not found' });
+        return res.status(401).json({ 
+          success: false, 
+          message: 'User not found' 
+        });
       }
       next();
     } catch (error) {
   if (error.name === "TokenExpiredError") {
-    return res.status(401).json({ success: false, message: "Access token expired" });
+    return res.status(401).json({ 
+      success: false, 
+      message: "Access token expired" 
+    });
   }
   return res.status(401).json({ success: false, message: "Invalid access token" });
 }

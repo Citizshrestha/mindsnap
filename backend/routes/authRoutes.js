@@ -27,7 +27,7 @@ router.post('/logout', protect, logoutUser);
 router.post('/sendOtpEmailVerification', protect, sendOtpEmailVerification); 
 router.post('/verifyEmail', protect, verifyEmail); 
 router.post('/isAuth', protect, isAuthenticated); 
-router.post('/verifyResetPasswordOtp', protect, verifyResetPasswordOtp);
+router.post('/verifyResetPasswordOtp', verifyResetPasswordOtp);
 router.post('/resetPassword', protect, resetPassword);
 
 export default router;

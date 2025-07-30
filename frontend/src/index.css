@@ -1,1 +1,25 @@
+  
 
+body.componentBackground {
+     margin: 0;
+     /* font-family: "Nunito"; */
+     color: #111;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    background: linear-gradient(135deg, #2B0889, #080429);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+:-webkit-autofill,
+:-webkit-autofill:hover,
+:-webkit-autofill:focus,
+:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #f0f2f5 inset !important; 
+  -webkit-text-fill-color: #1f2937 !important;
+  border: 0px solid #fff !important; 
+  outline: none !important; 
+  transition: background-color 5000s ease-in-out 0s !important;
+}

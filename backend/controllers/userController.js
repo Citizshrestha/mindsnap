@@ -1,4 +1,4 @@
-import { asyncHandler } from "../utils/asyncHandler.js";
+import {asyncHandler}  from "../utils/asyncHandler.js";
 import {User} from "../models/user.models.js";
 
 
@@ -9,7 +9,7 @@ export const getUserProfileInfo =  asyncHandler(async(req,res) => {
    const user = await  User.findById(req.user._id).select(" fullname username postsCount profilePicture aboutMe vibe vibeDescription");
 
    if (!user){
-    res.staus(400).json({
+    res.status(400).json({
       success: false,
       message: "User not Found"
     })

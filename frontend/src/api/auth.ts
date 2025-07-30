@@ -63,9 +63,9 @@ export const register = async (fullname: string, username: string, email: string
     return response.data;
   } catch (error: unknown) {
     if (axios.isAxiosError(error) && error.response) {
-      console.error('Register API Error:', error.response.data);
+      console.error('Registration API Error:', error.response.data);
     } else {
-      console.error('Register API Error:', (error as Error).message);
+      console.error('Registration Error:', (error as Error).message);
     }
     throw error;
   }

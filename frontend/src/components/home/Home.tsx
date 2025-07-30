@@ -1,11 +1,14 @@
 import Header from "../header/Header"
 import Sidebar from "../sidebar/Sidebar"
+import UserProfile from "../userProfile/UserProfile"
 
 const Home = () => {
   return (
-    <div>
+    <div className="">
       <Header/>
        <Sidebar />
+        <UserProfile/>
+
     </div>
   )
 }

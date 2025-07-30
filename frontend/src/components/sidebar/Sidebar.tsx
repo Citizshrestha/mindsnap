@@ -20,7 +20,7 @@ const Sidebar = () => {
 const sidebarStyle: React.CSSProperties = {
   background: '#611DD0',
   color: '#fff',
-  padding: '20px',
+  padding: '16px',
   borderRadius: '0 45px 45px 45px',
   height: 'calc(97vh - 80px)',
   width: '250px',
@@ -39,14 +39,14 @@ const linkStyle = (path: string): React.CSSProperties => ({
   textDecoration: 'none',
   margin: '15px 10px',
   padding: '10px',
-  borderTopRightRadius : "90px",
-  borderTopLeftRadius : "56px",
-  borderBottomLeftRadius : "56px",
-  borderBottomRightRadius : "none",
-  width : "230px",
+  borderTopRightRadius : "50px",
+  borderTopLeftRadius : "50px",
+  borderBottomLeftRadius : "50px",
+  borderBottomRightRadius : "50px",
+  width : "210px",
   background: location.pathname === path ? "#F5F6FA" : "transparent",
   color: location.pathname === path ? "#611DD0" : "#F5F6FA",
-  fontSize: '19px',
+  fontSize: '16px',
 });
 
 const handleLogout = (e: React.MouseEvent<HTMLAnchorElement>) => {
@@ -62,7 +62,7 @@ return (
       <a 
          href="/home" 
          style={linkStyle('/home')} 
-         className="font-stretch-100%"
+         className="font-stretch-100% "
          onClick={(e) => {
           e.preventDefault();
           navigate('/home')

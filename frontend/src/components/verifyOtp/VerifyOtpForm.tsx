@@ -1,20 +1,29 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { verifyResetPasswordOtp } from '../../api/auth';
-import logoImg from '../../../public/images/logoImg.png';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import axios from "axios";
+import { verifyResetPasswordOtp } from "../../api/auth";
+import logoImg from "../../../public/images/mindsnap logo.png";
+import { HiOutlineMail } from "react-icons/hi";
 
 type FormData = {
   otp: string;
 };
 
 const VerifyOtpForm = () => {
-  const [formData, setFormData] = useState<FormData>({ otp: '' });
+  const [formData, setFormData] = useState<FormData>({ otp: "" });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const userId = localStorage.getItem('userId') || '';
-  const email = localStorage.getItem('resetEmail') || '';
+  const userId = localStorage.getItem("userId") || "";
+  const email = localStorage.getItem("resetEmail") || "";
+
+  useEffect(() => {
+    document.body.classList.add("componentBackground");
+    return () => {
+      document.body.classList.remove("componentBackground");
+    };
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ otp: e.target.value });
@@ -28,41 +37,68 @@ const VerifyOtpForm = () => {
 
     try {
       if (!formData.otp) {
-        throw new Error('Please enter the OTP');
+        throw new Error("Please enter the OTP");
       }
       if (!userId) {
-        throw new Error('User ID not found. Please try again.');
+        throw new Error("User ID not found. Please try again.");
       }
 
       const response = await verifyResetPasswordOtp(userId, formData.otp);
       toast.success(response.message);
-      navigate('/reset-password');
+      navigate("/reset-password");
     } catch (err: unknown) {
-      const errorMessage =
-        (err instanceof Error && err.message) ||
-        'An unexpected error occurred. Please try again.';
+      let errorMessage = "An unexpected error occurred. Please try again.";
+
+      // Check if the error is an Axios error with a response
+      if (axios.isAxiosError(err)) {
+        if (err.response) {
+          errorMessage = err.response.data?.message || "Failed to verify OTP.";
+        } else if (err.request) {
+          errorMessage =
+            "Network Error: Unable to reach the server. Please check your connection.";
+        } else {
+          errorMessage = err.message || errorMessage;
+        }
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+
+      console.error("Verify OTP Error:", err);
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
-
   const handleBackToLogin = () => {
-    navigate('/');
+    navigate("/");
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen text-white bg-gradient-to-b from-[#0A0A23] to-[#1B1B4D]">
+    <div
+      style={{ background: "linear-gradient(135deg, #2B0889, #080429)" }}
+      className="flex flex-col items-center justify-center h-screen text-white "
+    >
       <div className="flex items-center mb-8">
         <div className="w-20 h-20 mr-4">
-          <img src={logoImg} alt="MindSnap Logo" className="w-full h-full object-cover rounded-full" />
+          <img
+            src={logoImg}
+            alt="MindSnap Logo"
+            className="w-full h-full object-cover rounded-full"
+          />
         </div>
         <h1 className="text-5xl font-bold">MindSnap</h1>
       </div>
       <div className="formContainer p-8 bg-[#16024B] rounded-2xl flex flex-col items-center">
         <h2 className="text-2xl font-semibold mb-6">Verify OTP</h2>
-        <p className="text-sm mb-4">An OTP has been sent to {email}</p>
+        <p className="flex flex-col items-center text-sm mb-4 px-6 py-3 rounded-xl bg-gradient-to-r from-[#2B0889] to-[#16024B] text-gray-200 border border-purple-900 shadow-md">
+          <HiOutlineMail className="inline-block mr-3 text-blue-400 text-xl" />
+          An OTP has been sent to{" "}
+          <span className="text-white font-semibold ml-1 bg-[#20035F] px-2 py-1 rounded">
+            {email}
+          </span>
+        </p>
+
         <form onSubmit={handleSubmit} className="w-72">
           <div className="relative mb-6">
             <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-400">
@@ -96,10 +132,10 @@ const VerifyOtpForm = () => {
             disabled={isLoading}
             className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg mb-4 duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 disabled:opacity-50"
           >
-            {isLoading ? 'Verifying...' : 'Verify OTP'}
+            {isLoading ? "Verifying..." : "Verify OTP"}
           </button>
           <p className="text-white text-center text-sm">
-            Back to{' '}
+            Back to{" "}
             <button
               type="button"
               onClick={handleBackToLogin}

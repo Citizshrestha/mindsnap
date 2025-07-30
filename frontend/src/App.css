@@ -4,3 +4,50 @@ h1{
     font-family: cursive;
   }
   
+  input:-webkit-autofill {
+  background-color: transparent !important;
+  -webkit-box-shadow: 0 0 0px 1000px transparent inset !important;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* App.css or ToastStyles.css */
+.Toastify__toast {
+  border-radius: 10px;
+  font-family: 'Segoe UI', sans-serif;
+  font-size: 16px;
+  padding: 16px;
+  background: #ffffff;
+  color: #333;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.Toastify__toast--success {
+  background: #e6fffa;
+  color: #0c7b6f;
+  border-left: 5px solid #0c7b6f;
+}
+
+.Toastify__toast--error {
+  background: #ffe6e6;
+  color: #cc0000;
+  border-left: 5px solid #cc0000;
+}
+
+.Toastify__toast--info {
+  background: #e6f0ff;
+  color: #003366;
+  border-left: 5px solid #003366;
+}
+
+.Toastify__toast--warning {
+  background: #fff8e6;
+  color: #996600;
+  border-left: 5px solid #996600;
+}
+
+body{
+  background-color: #F5F6FA;
+}

@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { transporter } from "../config/nodemailer.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokenUtils.js";
+
 // Generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {

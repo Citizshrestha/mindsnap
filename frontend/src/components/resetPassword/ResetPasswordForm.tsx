@@ -1,9 +1,9 @@
-// src/components/ResetPassword/ResetPasswordForm.tsx
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { resetPassword } from '../../api/auth';
-import logoImg from '../../../public/images/logoImg.png';
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import { resetPassword } from "../../api/auth";
+import logoImg from "../../../public/images/mindsnap logo.png";
+import axios from "axios";
 
 type FormData = {
   newPassword: string;
@@ -11,12 +11,22 @@ type FormData = {
 };
 
 const ResetPasswordForm = () => {
-  const [formData, setFormData] = useState<FormData>({ newPassword: '', confirmPassword: '' });
+  const [formData, setFormData] = useState<FormData>({
+    newPassword: "",
+    confirmPassword: "",
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const userId = localStorage.getItem('userId') || '';
+  const userId = localStorage.getItem("userId") || "";
+
+   useEffect(() => {
+      document.body.classList.add("componentBackground");
+      return () => {
+        document.body.classList.remove("componentBackground");
+      };
+    }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -34,21 +44,31 @@ const ResetPasswordForm = () => {
 
     try {
       if (!formData.newPassword || !formData.confirmPassword) {
-        throw new Error('Please fill in all fields');
+        throw new Error("Please fill in all fields");
       }
       if (formData.newPassword !== formData.confirmPassword) {
-        throw new Error('Passwords do not match');
+        throw new Error("Passwords do not match");
       }
       if (!userId) {
-        throw new Error('User ID not found. Please try again.');
+        throw new Error("User ID not found. Please try again.");
       }
 
       const response = await resetPassword(userId, formData.newPassword);
-      localStorage.removeItem('resetEmail');
+      localStorage.removeItem("resetEmail");
       toast.success(response.message);
-      navigate('/');
+      navigate("/");
     } catch (err: unknown) {
-    const errorMessage = err instanceof Error && err.message ? err.message : "An Unexpected error occured. Please try again"
+      let errorMessage = "An unexpected error occurred. Please try again.";
+
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.message || "Failed to reset password.";
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      } else {
+        errorMessage = "Network Error: Unable to reach the server. Please check your connection.";
+      }
+
+      console.error("Reset Password Error:", err);
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -61,14 +81,21 @@ const ResetPasswordForm = () => {
   };
 
   const handleBackToLogin = () => {
-    navigate('/');
+    navigate("/");
   };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen text-white bg-gradient-to-b from-[#0A0A23] to-[#1B1B4D]">
+    <div
+      className="flex flex-col items-center justify-center h-screen text-white"
+      style={{ background: "linear-gradient(135deg, #2B0889, #080429)" }}
+    >
       <div className="flex items-center mb-8">
-        <div className="w-20 h-20 mr-4">
-          <img src={logoImg} alt="MindSnap Logo" className="w-full h-full object-cover rounded-full" />
+        <div className="w-25 h-25 mr-2">
+          <img
+            src={logoImg}
+            alt="MindSnap Logo"
+            className="w-full h-full object-cover rounded-full"
+          />
         </div>
         <h1 className="text-5xl font-bold">MindSnap</h1>
       </div>
@@ -93,7 +120,7 @@ const ResetPasswordForm = () => {
               </svg>
             </div>
             <input
-              type={showPassword ? 'text' : 'password'}
+              type={showPassword ? "text" : "password"}
               name="newPassword"
               placeholder="New Password"
               value={formData.newPassword}
@@ -105,7 +132,7 @@ const ResetPasswordForm = () => {
               onClick={togglePasswordVisibility}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-400"
             >
-              {showPassword ? 'Hide' : 'Show'}
+              {showPassword ? "Hide" : "Show"}
             </button>
           </div>
           <div className="relative mb-6">
@@ -126,7 +153,7 @@ const ResetPasswordForm = () => {
               </svg>
             </div>
             <input
-              type={showPassword ? 'text' : 'password'}
+              type={showPassword ? "text" : "password"}
               name="confirmPassword"
               placeholder="Confirm Password"
               value={formData.confirmPassword}
@@ -140,10 +167,10 @@ const ResetPasswordForm = () => {
             disabled={isLoading}
             className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg mb-4 duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 disabled:opacity-50"
           >
-            {isLoading ? 'Resetting...' : 'Reset Password'}
+            {isLoading ? "Resetting..." : "Reset Password"}
           </button>
           <p className="text-white text-center text-sm">
-            Back to{' '}
+            Back to{" "}
             <button
               type="button"
               onClick={handleBackToLogin}

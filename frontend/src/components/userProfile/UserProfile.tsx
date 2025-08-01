@@ -121,38 +121,7 @@ const UserProfile: React.FC = () => {
   return (
     <div className="flex mt-18 items-center text-left relative">
       <div className="ml-[95px] mt-10 w-[75%] p-5 bg-white rounded-2xl text-inherit font-poppins overflow-y-auto h-[calc(100vh-80px)] scrollbar-hide">
-        {/* <div className="flex items-center mb-6">
-          <img
-            src={profilePicture}
-            alt="profilePic"
-            className="w-40 h-40 rounded-full mr-6 object-cover"
-            onError={(e: React.SyntheticEvent<HTMLImageElement>) => (e.currentTarget.src = "/images/default.jpg")}
-          />
-          <div className="flex flex-col">
-            <h1 className="text-3xl font-semibold">{fullname}</h1>
-            <p className="text-gray-700 text-[14px] tracking-wider">@{username}</p>
-            <button 
-            onClick={handleEditProfile}
-            className="mt-2 rounded-xl text-[15px] mr-10 bg-[#611DD0] text-white px-4 w-[10rem] py-2 font-medium">
-              Edit Profile
-            </button>
-          </div>
-        </div>
-
-        <div className="flex gap-4 mb-4">
-          <div className="flex-1 p-3 rounded-lg text-center  bg-gradient-to-r from-pink-500 to-[#9D55FF] text-white">
-            <h2 className="text-xl font-semibold">{postsCount}</h2>
-            <p className="text-sm">Posts</p>
-          </div>
-          <div className="flex-1 p-3 rounded-lg text-center bg-gradient-to-r from-blue-400 to-[#008596] text-white">
-            <h2 className="text-xl font-semibold">5,372</h2>
-            <p className="text-sm">Followers</p>
-          </div>
-          <div className="flex-1 p-3 rounded-lg text-center bg-gradient-to-r from-teal-400 to-[#06c56c] text-white">
-            <h2 className="text-xl font-semibold">842</h2>
-            <p className="text-sm">Following</p>
-          </div>
-        </div> */}
+      
 
         <div className="flex items-center mb-10 relative">
           <div className="profileSection w-full">

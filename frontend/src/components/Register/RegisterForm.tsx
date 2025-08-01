@@ -1,13 +1,13 @@
-// src/components/Register/RegisterForm.tsx
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { register } from "../../api/auth";
 import "./register.css";
+import landingPageImg from "../../../public/images/SocialMediaConnection.png";
+import logoImg from "../../../public/images/mindsnap logo.png";
+import { GoogleLogin } from "@react-oauth/google";
+import { jwtDecode } from "jwt-decode";
 import axios from "axios";
-import landingPageImg from "../../../public/images/SocialMediaConnection.png"
-import logoImg from '../../../public/images/mindsnap logo.png';
-
 
 type FormData = {
   fullName: string;
@@ -50,7 +50,12 @@ const RegisterForm = () => {
     setError(null);
 
     try {
-      if (!formData.fullName || !formData.username || !formData.email || !formData.password) {
+      if (
+        !formData.fullName ||
+        !formData.username ||
+        !formData.email ||
+        !formData.password
+      ) {
         throw new Error("Please fill in all fields");
       }
 
@@ -66,7 +71,7 @@ const RegisterForm = () => {
       );
       localStorage.setItem("accessToken", response.token);
       localStorage.setItem("userId", response._id);
-      toast.success("Registration successful! You can Login now.");
+      toast.success("Sign Up successful! You can log in now.");
       navigate("/");
     } catch (err: unknown) {
       let errorMessage = "An unexpected error occurred. Please try again.";
@@ -75,7 +80,7 @@ const RegisterForm = () => {
         if (err.response) {
           errorMessage =
             err.response.data?.message ||
-            "Registration failed. Please try again later.";
+            "Sign Up failed. Please try again later.";
         } else if (err.request) {
           errorMessage =
             "Network Error: Unable to reach the server. Please check your connection.";
@@ -84,7 +89,7 @@ const RegisterForm = () => {
         errorMessage = err.message;
       }
 
-      console.error("Registration Error:", err);
+      console.error("Sign Up Error:", err);
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -98,6 +103,47 @@ const RegisterForm = () => {
 
   const handleLoginClick = () => {
     navigate("/");
+  };
+
+  const handleGoogleSuccess = (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
+    if (credentialResponse.credential) {
+      try {
+        interface GoogleJwtPayload {
+          name?: string;
+          email?: string;
+          picture?: string;
+          sub?: string;
+        }
+        const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
+        console.log("Google User:", decoded);
+
+        if (!decoded.email) {
+          throw new Error("Google login failed: Email not provided");
+        }
+
+        localStorage.setItem("googleToken", credentialResponse.credential);
+        localStorage.setItem("googleUser", JSON.stringify(decoded));
+        toast.success(
+          `Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`
+        );
+        navigate("/");
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Failed to process Google login. Please try again.";
+        console.error("Google Login Error:", err);
+        toast.error(errorMessage);
+        setError(errorMessage);
+      }
+    }
+  };
+
+  const handleGoogleError = () => {
+    const errorMessage = "Google login failed. Please try again.";
+    console.error(errorMessage);
+    toast.error(errorMessage);
+    setError(errorMessage);
   };
 
   return (
@@ -159,6 +205,7 @@ const RegisterForm = () => {
               value={formData.fullName}
               onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
+              aria-label="Full Name"
             />
           </div>
           <div className="relative mb-6">
@@ -190,6 +237,7 @@ const RegisterForm = () => {
               value={formData.username}
               onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
+              aria-label="Username"
             />
           </div>
           <div className="relative mb-6">
@@ -211,6 +259,7 @@ const RegisterForm = () => {
               value={formData.email}
               onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
+              aria-label="Email"
             />
           </div>
           <div className="relative mb-6">
@@ -237,22 +286,25 @@ const RegisterForm = () => {
               value={formData.password}
               onChange={handleChange}
               className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700 placeholder-white"
+              aria-label="Password"
             />
             <button
               type="button"
               onClick={togglePasswordVisibility}
               className="absolute right-3 top-1/2 transform -translate-y-1/2 text-blue-400"
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? "Hide" : "Show"}
             </button>
           </div>
-          {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
+          {error && <p className="text-red-500 text-sm mb-4" role="alert">{error}</p>}
           <button
             type="submit"
             disabled={isLoading}
             className="w-full p-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg mb-4 duration-300 hover:scale-105 hover:shadow-lg hover:shadow-purple-500/50 disabled:opacity-50"
+            aria-label="Sign Up"
           >
-            {isLoading ? "Registering..." : "Sign Up"}
+            {isLoading ? "Signing Up..." : "Sign Up"}
           </button>
           <p className="text-white text-center text-sm pl-2">
             Have an account?{" "}
@@ -260,10 +312,17 @@ const RegisterForm = () => {
               type="button"
               onClick={handleLoginClick}
               className="text-pink-500 font-semibold underline-offset-2 hover:underline hover:scale-110 transition-all duration-200"
+              aria-label="Log in"
             >
               Log in
             </button>
           </p>
+          <div className="mt-4 flex   justify-center">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+            />
+          </div>
         </form>
       </div>
     </div>

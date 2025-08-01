@@ -23,3 +23,13 @@ body.componentBackground {
   outline: none !important; 
   transition: background-color 5000s ease-in-out 0s !important;
 }
+
+/* Custom overrides for themes and hidden scrollbar */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}

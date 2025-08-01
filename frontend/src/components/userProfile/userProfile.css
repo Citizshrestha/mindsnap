@@ -1,12 +1,4 @@
-/* Custom overrides for themes and hidden scrollbar */
-.scrollbar-hide {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
 
-.scrollbar-hide::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
-}
 
 /* Story highlight styling */
 .stories {

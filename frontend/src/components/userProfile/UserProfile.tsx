@@ -262,7 +262,7 @@ const UserProfile: React.FC = () => {
           </div>
           <div className="flex-1">
             <h3 className="text-[1.1rem] text-[#1438A6] font-semibold">
-              About Me
+              About Me(Bio)
             </h3>
             <p className="text-gray-900">{aboutMe}</p>
           </div>

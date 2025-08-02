@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { register } from "../../api/auth";
+import { register, checkUserExists } from "../../api/auth";
 import "./register.css";
 import landingPageImg from "../../../public/images/SocialMediaConnection.png";
 import logoImg from "../../../public/images/mindsnap logo.png";
@@ -14,6 +14,13 @@ type FormData = {
   username: string;
   email: string;
   password: string;
+};
+
+type GoogleJwtPayload = {
+  email?: string;
+  name?: string;
+  picture?: string;
+  sub?: string;
 };
 
 const RegisterForm = () => {
@@ -44,58 +51,71 @@ const RegisterForm = () => {
     setError(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setError(null);
 
-    try {
-      if (
-        !formData.fullName ||
-        !formData.username ||
-        !formData.email ||
-        !formData.password
-      ) {
-        throw new Error("Please fill in all fields");
-      }
-
-      if (formData.password.length < 6) {
-        throw new Error("Password must be at least 6 characters long");
-      }
-
-      const response = await register(
-        formData.fullName,
-        formData.username,
-        formData.email,
-        formData.password
-      );
-      localStorage.setItem("accessToken", response.token);
-      localStorage.setItem("userId", response._id);
-      toast.success("Sign Up successful! You can log in now.");
-      navigate("/");
-    } catch (err: unknown) {
-      let errorMessage = "An unexpected error occurred. Please try again.";
-
-      if (axios.isAxiosError(err)) {
-        if (err.response) {
-          errorMessage =
-            err.response.data?.message ||
-            "Sign Up failed. Please try again later.";
-        } else if (err.request) {
-          errorMessage =
-            "Network Error: Unable to reach the server. Please check your connection.";
-        }
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-
-      console.error("Sign Up Error:", err);
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
+  try {
+    if (
+      !formData.fullName ||
+      !formData.username ||
+      !formData.email ||
+      !formData.password
+    ) {
+      throw new Error("Please fill in all fields");
     }
-  };
+
+    if (formData.password.length < 6) {
+      throw new Error("Password must be at least 6 characters long");
+    }
+
+    // Check if email already exists BEFORE registering
+    const existsResponse = await checkUserExists(formData.email);
+    if (!existsResponse.success) {
+      throw new Error(existsResponse.message || "Failed to verify email");
+    }
+    if (existsResponse.exists) {
+      throw new Error("This email is already registered. Please log in.");
+    }
+
+    // If email does not exist, proceed with registration API call
+    const response = await register(
+      formData.fullName,
+      formData.username,
+      formData.email,
+      formData.password
+    );
+
+    localStorage.setItem("accessToken", response.token);
+    localStorage.setItem("userId", response._id);
+    toast.success("Sign Up successful! You can log in now.");
+    navigate("/");
+
+  } catch (err: unknown) {
+    let errorMessage = "An unexpected error occurred. Please try again.";
+
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        errorMessage =
+          err.response.data?.message ||
+          "Sign Up failed. Please try again later.";
+      } else if (err.request) {
+        errorMessage =
+          "Network Error: Unable to reach the server. Please check your connection.";
+      }
+    } else if (err instanceof Error) {
+      errorMessage = err.message;
+    }
+
+    console.error("Sign Up Error:", err);
+    setError(errorMessage);
+    toast.error(errorMessage);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
@@ -105,42 +125,69 @@ const RegisterForm = () => {
     navigate("/");
   };
 
-  const handleGoogleSuccess = (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
-    if (credentialResponse.credential) {
-      try {
-        interface GoogleJwtPayload {
-          name?: string;
-          email?: string;
-          picture?: string;
-          sub?: string;
-        }
-        const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
-        console.log("Google User:", decoded);
+const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
+  if (credentialResponse.credential) {
+    try {
+      const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
+      console.log("Google User:", decoded);
 
-        if (!decoded.email) {
-          throw new Error("Google login failed: Email not provided");
-        }
+      if (!decoded.email) {
+        throw new Error("Google Sign Up failed: Email not provided");
+    }
 
+      setIsLoading(true);
+      const existsResponse = await checkUserExists(decoded.email);
+      if (!existsResponse.success) {
+        throw new Error(existsResponse.message || "Failed to check user existence");
+      }
+
+      if (existsResponse.exists) {
+        // Login with Google email (no password)
+        const loginResponse = await axios.post('/api/auth/login', { email: decoded.email });
+        if (!loginResponse.data.success) {
+          throw new Error(loginResponse.data.message || "Login failed");
+        }
+        localStorage.setItem("accessToken", loginResponse.data.accessToken);
+        localStorage.setItem("userId", loginResponse.data._id);
         localStorage.setItem("googleToken", credentialResponse.credential);
         localStorage.setItem("googleUser", JSON.stringify(decoded));
-        toast.success(
-          `Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`
-        );
+        toast.success(`Welcome back to MindSnap, ${decoded.name || "User"}!`);
         navigate("/");
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : "Failed to process Google login. Please try again.";
-        console.error("Google Login Error:", err);
-        toast.error(errorMessage);
-        setError(errorMessage);
+      } else {
+        // Register new user
+        const username = decoded.email?.split('@')[0] || `user_${Date.now()}`;
+        const registerResponse = await register(
+          decoded.name || "Google User",
+          username,
+          decoded.email,
+          "google-signup"
+        );
+        if (!registerResponse.success) {
+          throw new Error(registerResponse.message || "Registration failed");
+        }
+        localStorage.setItem("accessToken", registerResponse.token);
+        localStorage.setItem("userId", registerResponse._id);
+        localStorage.setItem("googleToken", credentialResponse.credential);
+        localStorage.setItem("googleUser", JSON.stringify(decoded));
+        toast.success(`Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`);
+        navigate("/");
       }
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to process Google Sign Up. Please try again.";
+      console.error("Google Sign Up Error:", err);
+      toast.error(errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }
+};
 
   const handleGoogleError = () => {
-    const errorMessage = "Google login failed. Please try again.";
+    const errorMessage = "Google Sign Up failed. Please try again.";
     console.error(errorMessage);
     toast.error(errorMessage);
     setError(errorMessage);
@@ -166,21 +213,22 @@ const RegisterForm = () => {
           </div>
           <h1 className="text-5xl font-bold">MindSnap</h1>
         </div>
-        <div className="formHeader flex justify-between gap-10 mb-5">
-          <button
-            className="loginToggle text-white text-lg font-semibold rounded-lg px-4 py-2 hover:bg-gray-700 transition-colors"
-            onClick={handleLoginClick}
-          >
-            Log in
-          </button>
-          <button
-            className="registerToggle bg-gradient-to-r from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg px-4 py-2 hover:from-blue-600 hover:to-purple-600 transition-colors"
-            disabled
-          >
-            Register
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="w-72">
+
+        <form onSubmit={handleSubmit} className="w-72 formContainer">
+          <div className="formHeader flex justify-between gap-10 mb-5 ">
+            <button
+              className="loginToggle text-white text-lg font-semibold rounded-lg ml-18 px-4 py-2 hover:bg-gray-700 transition-colors"
+              onClick={handleLoginClick}
+            >
+              Log in
+            </button>
+            <button
+              className="registerToggle bg-gradient-to-r mr-10 from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg px-4 py-2 hover:from-blue-600 hover:to-purple-600 transition-colors"
+              disabled
+            >
+              Register
+            </button>
+          </div>
           <div className="relative mb-6">
             <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-400">
               <svg
@@ -317,10 +365,15 @@ const RegisterForm = () => {
               Log in
             </button>
           </p>
-          <div className="mt-4 flex   justify-center">
+          <div className="mt-4 flex justify-center">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={handleGoogleError}
+                useOneTap
+                text="continue_with"
+                shape="rectangular"
+                theme="filled_blue"
+                size="large"
             />
           </div>
         </form>

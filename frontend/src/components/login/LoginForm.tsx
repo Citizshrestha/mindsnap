@@ -1,15 +1,13 @@
-// src/components/login/LoginForm.tsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { login } from "../../api/auth";
+import { login,googleLogin } from "../../api/auth";
 import logoImg from "../../../public/images/mindsnap logo.png";
 import mobilePic from "../../../public/images/mobilePic.png";
 import "./login.css";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
-import {jwtDecode} from "jwt-decode";  
-
+  import type { CredentialResponse } from "@react-oauth/google";
 
 type FormData = {
   email: string;
@@ -100,6 +98,37 @@ const LoginForm = () => {
     }
   };
 
+  
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    try {
+      setIsLoading(true);
+
+      if (!credentialResponse.credential) {
+        throw new Error("No credential received from Google.");
+      }
+
+          // Call our API helper
+    const response = await googleLogin(credentialResponse.credential);
+      
+      localStorage.setItem("accessToken", response.accessToken);
+      localStorage.setItem("userId", response._id);
+      
+      
+      
+      toast.success(`Welcome ${response.username || "User"}!`);
+      navigate("/home");
+    } catch (error) {
+      let errorMessage = "Google login failed";
+      if (axios.isAxiosError(error)) {
+        errorMessage = error.response?.data?.message || errorMessage;
+      }
+      toast.error(errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
   };
@@ -183,6 +212,7 @@ const LoginForm = () => {
                 placeholder="Password"
                 value={formData.password}
                 onChange={handleChange}
+                required
                 className="w-full p-3 pl-10 border-2 border-gray-600 rounded-lg bg-[#20035F] text-white text-sm focus:outline-none focus:border-blue-700"
               />
               <button
@@ -233,35 +263,16 @@ const LoginForm = () => {
             </p>
             <div className="mt-4 flex justify-center">
               <GoogleLogin
-                onSuccess={(credentialResponse) => {
-                  if (credentialResponse.credential) {
-                    interface GoogleJwtPayload {
-                      name?: string;
-                      email?: string;
-                      picture?: string;
-                      sub?: string;
-                      // add other fields as needed
-                    }
-
-                    const decoded: GoogleJwtPayload = jwtDecode<GoogleJwtPayload>(
-                      credentialResponse.credential
-                    );
-                    console.log("Google User:", decoded);
-
-                    // Save token or user info as needed
-                    localStorage.setItem(
-                      "googleToken",
-                      credentialResponse.credential
-                    );
-                    localStorage.setItem("googleUser", JSON.stringify(decoded));
-
-                    toast.success(`Welcome ${decoded.name || "User"}!`);
-                    navigate("/home"); // redirect to home or wherever
-                  }
-                }}
+                onSuccess={handleGoogleSuccess}
                 onError={() => {
                   toast.error("Google Login Failed");
+                  setError("Google authentication failed. Please try again.");
                 }}
+                useOneTap
+                text="continue_with"
+                shape="rectangular"
+                theme="filled_blue"
+                size="large"
               />
             </div>
           </form>

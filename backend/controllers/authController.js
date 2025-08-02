@@ -3,6 +3,10 @@ import jwt from "jsonwebtoken";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { transporter } from "../config/nodemailer.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokenUtils.js";
+import crypto from "crypto";
+import { OAuth2Client } from "google-auth-library";
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Generate JWT
 const generateToken = (id) => {
@@ -31,28 +35,44 @@ const sendEmail = async (mailOptions) => {
 export const registerUser = asyncHandler(async (req, res) => {
   const { fullname, username, email, password } = req.body;
 
-  if (password.length < 6) {
+  // Generate a secure default password for Google sign-ups or if password is invalid
+  let finalPassword = password;
+  if (!password || password === "google-signup" || password.length < 6) {
+    finalPassword = crypto.randomBytes(16).toString("hex"); // Ensures length > 6
+  }
+
+  // Validate required fields
+  if (!fullname || !username || !email || !finalPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "Full name, username, email, and password are required",
+    });
+  }
+
+  if (finalPassword.length < 6) {
     return res.status(400).json({
       success: false,
       message: "Password must be at least 6 characters long",
     });
   }
 
+  // Check if user already exists
   const userExists = await User.findOne({ email });
   if (userExists) {
     return res.status(400).json({
       success: false,
-      message: "User already exists",
+      message: "This email is already registered. Please log in.",
     });
   }
 
-  const user = await User.create({ fullname, username, email, password });
+  try {
+    const user = await User.create({ fullname, username, email, password: finalPassword });
 
-  const mailOptions = {
-    from: process.env.SENDER_EMAIL,
-    to: email,
-    subject: `🎉 Welcome to MindSnap, ${username}! 🚀`,
-    text: `
+    const mailOptions = {
+      from: process.env.SENDER_EMAIL,
+      to: email,
+      subject: `🎉 Welcome to MindSnap, ${username}! 🚀`,
+      text: `
 Hello ${username} 🌟,
 
 Welcome to MindSnap! We're excited to have you here. 🎈
@@ -65,19 +85,45 @@ If you need any assistance, reach out to us at ${process.env.SUPPORT_EMAIL}. �
 Cheers,
 The MindSnap Team 🌱
     `,
-  };
+    };
 
-  const emailResult = await sendEmail(mailOptions);
+    const emailResult = await sendEmail(mailOptions);
 
-  return res.status(201).json({
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      emailStatus: emailResult.message,
+      _id: user._id,
+      fullname: user.fullname,
+      username: user.username,
+      email: user.email,
+      token: generateToken(user._id),
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "This email is already registered. Please log in.",
+      });
+    }
+    console.error("Registration error:", error);
+    throw error;
+  }
+});
+
+// @route GET /api/auth/check
+export const checkUserExists = asyncHandler(async (req, res) => {
+  const { email } = req.query;
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    });
+  }
+  const user = await User.findOne({ email });
+  res.json({
     success: true,
-    message: "User registered successfully",
-    emailStatus: emailResult.message,
-    _id: user._id,
-    fullname: user.fullname,
-    username: user.username,
-    email: user.email,
-    token: generateToken(user._id),
+    exists: !!user,
   });
 });
 
@@ -87,16 +133,17 @@ export const loginUser = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({ email });
 
-   if (!user) {
+  if (!user) {
     return res.status(400).json({
-      success:  false,
-      message: "Email is not registered. Please register First"
-    })
-   }
+      success: false,
+      message: "Email is not registered. Please register first.",
+    });
+  }
+
   if (!(await user.matchPassword(password))) {
     return res.status(401).json({
       success: false,
-      message: "Invalid credentials. Please try again",
+      message: "Invalid credentials. Please try again.",
     });
   }
 
@@ -113,11 +160,95 @@ export const loginUser = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: "Login successful",
-    accessToken: accessToken,
+    accessToken,
     _id: user._id,
     username: user.username,
     email: user.email,
   });
+});
+
+// @route POST /api/auth/google-login
+export const googleLogin = asyncHandler(async (req, res) => {
+  const { credential } = req.body;
+
+  if (!credential) {
+    return res.status(400).json({
+      success: false,
+      message: "Google credential is required",
+    });
+  }
+
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+
+    if (!payload || !payload.email) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Google token payload",
+      });
+    }
+
+    let user = await User.findOne({ email: payload.email });
+
+    if (!user) {
+      // Register new user if not exists
+      const username = payload.email?.split('@')[0] || `user_${Date.now()}`;
+      user = await User.create({
+        fullname: payload.name || "Google User",
+        username,
+        email: payload.email,
+        password: crypto.randomBytes(16).toString("hex"),
+      });
+      const mailOptions = {
+        from: process.env.SENDER_EMAIL,
+        to: payload.email,
+        subject: `🎉 Welcome to MindSnap, ${username}! 🚀`,
+        text: `
+Hello ${username} 🌟,
+
+Welcome to MindSnap! We're excited to have you here. 🎈
+Your account has been successfully created with the email: ${payload.email}.
+
+Start exploring now: ${process.env.CLIENT_URL}/login
+
+If you need any assistance, reach out to us at ${process.env.SUPPORT_EMAIL}. 💌
+
+Cheers,
+The MindSnap Team 🌱
+        `,
+      };
+      await sendEmail(mailOptions);
+    }
+
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: user.isNew ? "User registered and logged in successfully" : "Login successful",
+      accessToken,
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error("Google login error:", error);
+    return res.status(401).json({
+      success: false,
+      message: "Invalid Google authentication. Please try again.",
+    });
+  }
 });
 
 // @route POST /api/auth/sendOtpEmailVerification

@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,
+      unique: true, // Ensure this is enforced
       trim: true,
     },
     password: {
@@ -74,7 +74,7 @@ const userSchema = new mongoose.Schema(
     },
     postsCount: {
       type: Number,
-      default: 0, 
+      default: 0,
     },
     storyHighlights: [
       {
@@ -90,11 +90,11 @@ const userSchema = new mongoose.Schema(
     ],
     vibe: {
       type: String,
-      default: "", 
+      default: "",
     },
     vibeDescription: {
       type: String,
-      default: "", 
+      default: "",
     },
     aboutMe: {
       type: String,
@@ -103,13 +103,9 @@ const userSchema = new mongoose.Schema(
     Posts: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Post", 
+        ref: "Post",
       },
     ],
-    postsCount: {
-      type: Number,
-      default: "0"
-    }
   },
   { timestamps: true }
 );
@@ -117,9 +113,14 @@ const userSchema = new mongoose.Schema(
 // Hash the password before saving the user document
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (error) {
+    return next(error); // Pass error to Mongoose error handling
+  }
 });
 
 // Method to match passwords

@@ -82,8 +82,10 @@ Author: Citiz Shrestha
 📧 Email: citizshresthaa@gmail.com
 🌐 GitHub: @Citizshrestha
 
+
 ## 📂 Folder Structure
 
+```plaintext
 mindsnap/
 │
 ├── backend/                  # Node.js + Express API

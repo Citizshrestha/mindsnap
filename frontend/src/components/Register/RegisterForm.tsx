@@ -110,7 +110,6 @@ const handleSubmit = async (e: React.FormEvent) => {
 
     console.error("Sign Up Error:", err);
     setError(errorMessage);
-    toast.error(errorMessage);
   } finally {
     setIsLoading(false);
   }

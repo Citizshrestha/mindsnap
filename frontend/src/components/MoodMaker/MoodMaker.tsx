@@ -1,5 +1,6 @@
-import { useRef, useState, useEffect, useCallback } from "react"; // Added useCallback import
-import { dailyMotivations } from "./dailyMotivations"; // Fixed typo in import
+import { useState, useEffect, useCallback } from "react";
+import ReactPlayer from "react-player";
+import { dailyMotivations } from "./dailyMotivations";
 import { joyTasks } from "./joyTasks";
 import { moodSongs } from "./moodBasedSongs";
 
@@ -16,12 +17,11 @@ const MoodMaker: React.FC = () => {
   const [showRecommendation, setShowRecommendation] = useState(false);
   const [dailyMotivation, setDailyMotivation] = useState<string>("");
   const [littleJoy, setLittleJoy] = useState<string>("");
-  const audioRef = useRef<HTMLAudioElement>(null);
 
-  const userId = "user1"; // Replace with dynamic user ID from auth context if available
+  const userId = "user1"; // Replace with auth user ID if needed
   const storageKey = `moodMakerData_${userId}`;
 
-  // Select new items with random selection
+  /** Select new items randomly */
   const selectNewItems = useCallback(() => {
     let newMotivation, newJoy, newSong;
     const lastData = localStorage.getItem(storageKey);
@@ -38,7 +38,7 @@ const MoodMaker: React.FC = () => {
     do {
       const moods: Array<keyof typeof moodSongs> = ["happy", "sad", "angry"];
       const mood = moods[Math.floor(Math.random() * moods.length)];
-      newSong = moodSongs[mood][Math.floor(Math.random() * 100)];
+      newSong = moodSongs[mood][Math.floor(Math.random() * moodSongs[mood].length)];
     } while (existing.lastSong?.title === newSong.title);
 
     setDailyMotivation(newMotivation);
@@ -54,13 +54,13 @@ const MoodMaker: React.FC = () => {
         lastUpdate: new Date().getTime(),
       })
     );
-  }, [storageKey]); // Dependency on storageKey ensures re-run if userId changes
+  }, [storageKey]);
 
-  // Load or initialize last selected items from localStorage
+  /** Load saved or select new on mount */
   useEffect(() => {
     const lastData = localStorage.getItem(storageKey);
     const now = new Date().getTime();
-    const oneWeek = 7 * 24 * 60 * 60 * 1000; // One week in milliseconds
+    const oneWeek = 7 * 24 * 60 * 60 * 1000;
 
     if (lastData) {
       const { lastMotivation, lastJoy, lastSong, lastUpdate } = JSON.parse(lastData);
@@ -76,14 +76,14 @@ const MoodMaker: React.FC = () => {
     }
   }, [storageKey, selectNewItems]);
 
-  // Handle mood selection with animation
+  /** Mood select → show recommendation */
   const handleMoodSelect = (mood: "happy" | "sad" | "angry") => {
-    const recommended = moodSongs[mood][Math.floor(Math.random() * 100)];
+    const recommended = moodSongs[mood][Math.floor(Math.random() * moodSongs[mood].length)];
     setRecommendedSong(recommended);
     setShowRecommendation(true);
   };
 
-  // Handle play/cancel recommendation
+  /** Accept/Cancel recommendation */
   const handleRecommendationAction = (action: "play" | "cancel") => {
     if (action === "play" && recommendedSong) {
       handlePlayPause(recommendedSong);
@@ -92,38 +92,17 @@ const MoodMaker: React.FC = () => {
     setRecommendedSong(null);
   };
 
+  /** Play/Pause song */
   const handlePlayPause = (song: Song) => {
-    if (currentSong?.title === song.title && isPlaying) {
-      audioRef.current?.pause();
-      setIsPlaying(false);
-      return;
-    }
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+    if (currentSong?.title === song.title) {
+      setIsPlaying(!isPlaying); // toggle
+    } else {
       setCurrentSong(song);
       setIsPlaying(true);
-      audioRef.current.src = song.url;
-      audioRef.current.load();
-      audioRef.current
-        .play()
-        .then(() => {
-          audioRef.current!.volume = volume;
-        })
-        .catch(() => {
-          setIsPlaying(false);
-        });
     }
   };
 
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (audioRef.current) audioRef.current.volume = newVolume;
-  };
-
-  // Animation styles
+  /** Animation styles for emojis */
   const animationStyle = "transition-all duration-300 ease-in-out transform hover:scale-105";
 
   return (
@@ -139,25 +118,11 @@ const MoodMaker: React.FC = () => {
         <h3 className="text-xl font-semibold text-pink-600 mb-2">Mood Booster</h3>
         <p className="text-gray-600">How are you feeling today?</p>
         <div className="flex justify-around mt-2 text-2xl">
-          <span
-            className={`${animationStyle} cursor-pointer`}
-            onClick={() => handleMoodSelect("happy")}
-          >
-            😊
-          </span>
-          <span
-            className={`${animationStyle} cursor-pointer`}
-            onClick={() => handleMoodSelect("sad")}
-          >
-            😢
-          </span>
-          <span
-            className={`${animationStyle} cursor-pointer`}
-            onClick={() => handleMoodSelect("angry")}
-          >
-            😡
-          </span>
+          <span className={`${animationStyle} cursor-pointer`} onClick={() => handleMoodSelect("happy")}>😊</span>
+          <span className={`${animationStyle} cursor-pointer`} onClick={() => handleMoodSelect("sad")}>😢</span>
+          <span className={`${animationStyle} cursor-pointer`} onClick={() => handleMoodSelect("angry")}>😡</span>
         </div>
+
         {showRecommendation && recommendedSong && (
           <div className="mt-2 p-2 bg-purple-100 rounded-lg text-center animate-fadeIn">
             <p className="text-purple-600">
@@ -179,6 +144,7 @@ const MoodMaker: React.FC = () => {
             </div>
           </div>
         )}
+
         <p className="text-gray-600 mt-2 italic">"It’s okay to pause. Breathe. Reset."</p>
       </div>
 
@@ -193,9 +159,10 @@ const MoodMaker: React.FC = () => {
       {/* Chill Music */}
       <div className="mt-5 p-4 bg-white rounded-2xl shadow text-center">
         <h3 className="text-xl font-semibold text-purple-600 mb-2">🎧 Chill Corner</h3>
+
         {currentSong && (
-          <div className="mb-2">
-            <p className="text-gray-600">
+          <>
+            <p className="text-gray-600 mb-2">
               {currentSong.title}
               {isPlaying && <span className="ml-2 text-purple-600">▶ Playing</span>}
             </p>
@@ -205,7 +172,19 @@ const MoodMaker: React.FC = () => {
             >
               {isPlaying ? "Pause" : "Play"}
             </button>
-          </div>
+
+            {/* ReactPlayer for YouTube or MP3 */}
+            <div className="mt-4">
+              <ReactPlayer
+                src={currentSong.url}
+                playing={isPlaying}
+                controls={true}
+                volume={volume}
+                width="100%"
+                height="50px"
+              />
+            </div>
+          </>
         )}
 
         {/* Volume Control */}
@@ -220,11 +199,10 @@ const MoodMaker: React.FC = () => {
             max="1"
             step="0.01"
             value={volume}
-            onChange={handleVolumeChange}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
             className="w-full"
           />
         </div>
-        <audio ref={audioRef} />
       </div>
     </div>
   );

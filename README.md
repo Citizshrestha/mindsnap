@@ -34,7 +34,7 @@ Unlike traditional platforms, MindSnap emphasizes **privacy, authenticity, and m
 ## 🏗 Tech Stack
 
 ### **Frontend**
-- [Next.js](https://nextjs.org/) (with TypeScript)
+- [React+TypeScript](https://nextjs.org/) (with TypeScript)
 - [Tailwind CSS](https://tailwindcss.com/)
 - Modern UI Components
 

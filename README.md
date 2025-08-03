@@ -50,29 +50,6 @@ Unlike traditional platforms, MindSnap emphasizes **privacy, authenticity, and m
 - dotenv for environment variables
 
 ---
-
-## 📂 Folder Structure
-
-```plaintext
-mindsnap/
-│
-├── backend/                  # Node.js + Express API
-│   ├── config/               # DB connection, env config
-│   ├── controllers/          # API route controllers
-│   ├── middleware/           # Auth & error handling middleware
-│   ├── models/               # Mongoose schemas
-│   ├── routes/               # Express routes
-│   ├── utils/                 # Utility functions
-│   └── server.js             # Main server file
-│
-├── frontend/                 # Next.js + TypeScript frontend
-│   ├── app/                  # Next.js app directory
-│   ├── components/           # Reusable UI components
-│   ├── pages/                # Pages
-│   ├── public/               # Public assets
-│   └── styles/               # Global styles
-│
-└── README.md
 ⚙️ Installation
 1️⃣ Clone the repository
 git clone https://github.com/Citizshrestha/mindsnap.git
@@ -104,3 +81,25 @@ Advanced analytics dashboard for admins
 Author: Citiz Shrestha
 📧 Email: citizshresthaa@gmail.com
 🌐 GitHub: @Citizshrestha
+
+## 📂 Folder Structure
+
+mindsnap/
+│
+├── backend/                  # Node.js + Express API
+│   ├── config/               # DB connection, env config
+│   ├── controllers/          # API route controllers
+│   ├── middleware/           # Auth & error handling middleware
+│   ├── models/               # Mongoose schemas
+│   ├── routes/               # Express routes
+│   ├── utils/                 # Utility functions
+│   └── server.js             # Main server file
+│
+├── frontend/                 # Next.js + TypeScript frontend
+│   ├── app/                  # Next.js app directory
+│   ├── components/           # Reusable UI components
+│   ├── pages/                # Pages
+│   ├── public/               # Public assets
+│   └── styles/               # Global styles
+│
+└── README.md

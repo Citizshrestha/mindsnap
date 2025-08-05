@@ -4,7 +4,7 @@ import UserProfile from "../userProfile/UserProfile"
 
 const Home = () => {
   return (
-    <div className="">
+    <div>
       <Header/>
        <Sidebar />
         <UserProfile/>

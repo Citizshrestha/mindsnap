@@ -51,3 +51,12 @@ h1{
 body{
   background-color: #F5F6FA;
 }
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.flex {
+  display: flex;
+}

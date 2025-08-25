@@ -10,6 +10,8 @@ import defaultAvatar from "../../../public/images/default.jpg";
 import { useSelector, useDispatch } from "react-redux";
 import { setProfilePicture, setUsername } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
+import logoImg from "../../../public/images/mindsnap logo.png";
+
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
@@ -135,17 +137,22 @@ const Header: React.FC = () => {
   return (
     <div className="fixed font-poppins bg-[#611DD0] top-0 left-0 w-full h-20 flex items-center justify-between px-5 z-50">
       <div className="flex items-center justify-start h-full">
-        <h1 style={{ margin: 0, display: "flex", alignItems: "center" }}>
+          <img
+            src={logoImg}
+            alt="SnapMind Logo"
+            className="w-22 h-22 pb-2 pl-5 object-cover rounded-full"
+          />
+        
+        <h1 style={{ margin: 0, display: "flex",paddingRight:"100px", alignItems: "center" }}>
           <span
             style={{
-              background: "linear-gradient(135deg, #00ffcc, #ff00ff)",
-              WebkitBackgroundClip: "text",
-              backgroundClip: "text",
-              color: "transparent",
+              // background: "linear-gradient(135deg, #00ffcc, #ff00ff)",
+              // WebkitBackgroundClip: "text",
+              // backgroundClip: "text",
+              color: "white",
               fontSize: "32px",
               fontWeight: "bold",
-              paddingLeft: "16px",
-              marginRight: "5px",
+              paddingLeft: "6px",
               marginBottom: "6px",
             }}
           >
@@ -276,12 +283,12 @@ const Header: React.FC = () => {
         />
       </div>
 
-      <div className="text-white flex items-center cursor-pointer space-x-4 gap-1">
-        <div className="setting h-9 w-9 mr-10 mb-2">
+      <div className="text-white flex items-center cursor-pointer space-x-4 gap-2">
+        <div className="setting h-9 w-9 mr-6 mb-2">
           <img src={settingImg} className="rounded-full ml-2 " alt="Setting" />
           <span className="text-center text-[1rem]">Settings</span>
         </div>
-        <FiBell size={20} className="mr-5 cursor-pointer text-[#FFD700]" />
+        <FiBell size={24} className="mr-5 cursor-pointer text-[#FFD700]" />
 
         <div className="profileContainer flex flex-col items-center h-12 w-12 object-cover mr-2 mb-4">
           <div className="relative">

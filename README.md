@@ -23,14 +23,6 @@ Unlike traditional platforms, MindSnap emphasizes **privacy, authenticity, and m
 
 ---
 
-## 📸 UI / UX Highlights
-- **Modern & Minimal UI** – Inspired by Instagram, Snapchat, and Telegram but redesigned for uniqueness.
-- **Bright Gradient Themes** – Purple, pink, orange, and blue tones.
-- **Responsive Design** – Fully optimized for desktop, tablet, and mobile.
-- **Animations & Hover Effects** – Smooth transitions for a delightful experience.
-
----
-
 ## 🏗 Tech Stack
 
 ### **Frontend**

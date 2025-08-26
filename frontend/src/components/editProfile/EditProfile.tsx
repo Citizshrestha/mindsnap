@@ -1,90 +1,177 @@
-import { useState, useEffect } from "react";
+// src/pages/EditProfile/EditProfile.tsx
+import React, { useEffect, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import type { RootState } from "../../redux/store";
-import { setProfilePicture, setUsername, setGender, setVibe } from "../../redux/slices/userSlice"; // Import all actions
-import axiosClient from "../../api/axiosClient"; // Adjust path if needed
+import {
+  setProfilePicture,
+  setUsername,
+  setGender,
+  setVibe,
+  setUserProfile,
+} from "../../redux/slices/userSlice";
+import axiosClient from "../../api/axiosClient";
 import defaultAvatar from "../../../public/images/default.jpg";
 import { toast } from "react-toastify";
+import type { AxiosError } from "axios";
 
-const EditProfile = () => {
+
+
+const EditProfile: React.FC = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { profilePicture, username, gender, vibe } = useSelector((state: RootState) => state.user);
+  const {
+    profilePicture,
+    username,
+    gender,
+    vibe,
+    dob,
+    fullname,
+    vibeDescription,
+    aboutMe,
+  } = useSelector((state: RootState) => state.user);
 
-  // Initialize state with existing Redux values; use defaults for missing fields
-  const [fullName, setFullName] = useState("");
-  const [usernameState, setUsernameState] = useState(username || "");
-  const [genderState, setGenderState] = useState(gender || "");
-  const [dob, setDob] = useState("");
-  const [vibeState, setVibeState] = useState(vibe || "");
-  const [vibeDescription, setVibeDescription] = useState("");
-  const [aboutMe, setAboutMe] = useState("");
+  // Local form state initialized from Redux
+  const [fullnameState, setFullnameState] = useState<string>(fullname || "");
+  const [usernameState, setUsernameState] = useState<string>(username || "");
+  const [genderState, setGenderState] = useState<string>(gender || "");
+  const [dobState, setDobState] = useState<string>(dob || "");
+  const [vibeState, setVibeState] = useState<string>(vibe || "");
+  const [vibeDescriptionState, setVibeDescriptionState] = useState<string>(
+    vibeDescription || ""
+  );
+  const [aboutMeState, setAboutMeState] = useState<string>(aboutMe || "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [saving, setSaving] = useState<boolean>(false);
 
-  // Load initial data on mount
+
+
+  // Load server profile on mount and hydrate Redux + local state
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const response = await axiosClient.get("/api/users/profile", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
         });
-        const { profilePicture, username, gender, vibe, fullName, dob, vibeDescription, aboutMe } = response.data;
-        dispatch(setProfilePicture(profilePicture || ""));
-        dispatch(setUsername(username || ""));
-        dispatch(setGender(gender || ""));
-        dispatch(setVibe(vibe || ""));
-        setFullName(fullName || "");
-        setDob(dob || "");
-        setVibeDescription(vibeDescription || "");
-        setAboutMe(aboutMe || "");
+        const data = response.data || {};
+
+        // Save to Redux
+        dispatch(setUserProfile(data));
+
+        // Update local form state
+        setFullnameState(data.fullname || "");
+        setUsernameState(data.username || "");
+        setGenderState(data.gender || "");
+        setDobState(data.dob || "");
+        setVibeState(data.vibe || "");
+        setVibeDescriptionState(data.vibeDescription || "");
+        setAboutMeState(data.aboutMe || "");
       } catch (err: unknown) {
+        // Use type guard to check for AxiosError shape
+        const errorObj = err as { message?: string; response?: { status?: number; data?: unknown } };
+        console.error("Fetch profile error:", {
+          message: errorObj?.message,
+          status: errorObj?.response?.status,
+          data: errorObj?.response?.data,
+        });
         setError("Failed to load profile data");
-        toast.error(String(err));
+        toast.error("Failed to load profile data");
       }
     };
-    fetchProfile(); // Fetch on mount to ensure all fields are populated
+    fetchProfile();
   }, [dispatch]);
 
+  
+ 
   const handleSave = async () => {
+    setError(null);
+    setSuccess(null);
+  setSaving(true);
+
     const updatedProfile = {
-      fullName,
+    fullname: fullnameState,
       username: usernameState,
       gender: genderState,
-      dob,
+      dob: dobState,
       vibe: vibeState,
-      vibeDescription,
-      aboutMe,
+      vibeDescription: vibeDescriptionState,
+      aboutMe: aboutMeState,
     };
 
     try {
-      // Send updated profile to backend
-      const response = await axiosClient.put("/api/users/profile", updatedProfile, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
+      const response = await axiosClient.patch(
+        "/api/users/update-profile",
+        updatedProfile,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      const updated = response.data || {};
+
+      // Update Redux
+      dispatch(
+        setUserProfile({
+          fullname: updated.fullname,
+          username: updated.username,
+          gender: updated.gender,
+          dob: updated.dob,
+          vibe: updated.vibe,
+          vibeDescription: updated.vibeDescription,
+          aboutMe: updated.aboutMe,
+          profilePicture: updated.profilePicture,
+        })
+      );
+
+      // Update local state
+      setFullnameState(updated.fullname ?? fullnameState);
+      setUsernameState(updated.username ?? usernameState);
+      setGenderState(updated.gender ?? genderState);
+      setDobState(updated.dob ?? dobState);
+      setVibeState(updated.vibe ?? vibeState);
+      setVibeDescriptionState(
+        updated.vibeDescription ?? vibeDescriptionState
+      );
+      setAboutMeState(updated.aboutMe ?? aboutMeState);
+
+      if (updated.profilePicture !== undefined)
+        dispatch(setProfilePicture(updated.profilePicture));
+      if (updated.username !== undefined)
+        dispatch(setUsername(updated.username));
+      if (updated.gender !== undefined) dispatch(setGender(updated.gender));
+      if (updated.vibe !== undefined) dispatch(setVibe(updated.vibe));
+
+      setSuccess("Profile updated successfully!");
+      toast.success("Profile updated successfully!");
+
+      setTimeout(() => navigate("/profile"), 900);
+    } catch (err: unknown) {
+      // Use AxiosError type for better type safety
+      const axiosErr = err as AxiosError<unknown>;
+      console.error("Update profile error:", {
+        message: axiosErr?.message,
+        status: axiosErr?.response?.status,
+        data: axiosErr?.response?.data,
+        headers: axiosErr?.response?.headers,
       });
 
-      // Update Redux state with server response
-      const { profilePicture, username, gender, vibe } = response.data;
-      dispatch(setProfilePicture(profilePicture || ""));
-      dispatch(setUsername(username || ""));
-      dispatch(setGender(gender || ""));
-      dispatch(setVibe(vibe || ""));
+      const serverMessage =
+        (axiosErr?.response?.data as { message?: string })?.message ||
+        (typeof axiosErr?.response?.data === "string"
+          ? axiosErr?.response?.data
+          : null) ||
+        axiosErr?.message ||
+        "Failed to update profile. Please try again.";
 
-      // Update localStorage
-      localStorage.setItem("profilePicture", profilePicture || "");
-      localStorage.setItem("username", username || "");
-      localStorage.setItem("gender", gender || "");
-      localStorage.setItem("vibe", vibe || "");
-
-      // Set success message and navigate back
-      setSuccess("Profile updated successfully!");
-      setTimeout(() => {
-        navigate("/profile");
-      }, 1000); // Delay to show success message
-    } catch (err) {
-      setError("Failed to update profile. Please try again.");
-      console.error("Error updating profile:", err);
+      setError(String(serverMessage));
+      toast.error(String(serverMessage));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -99,11 +186,29 @@ const EditProfile = () => {
       <div className="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-8">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-2">
-            <a href="/profile" className="text-[#5C27FE] flex justify-between items-center gap-2 text-2xl font-semibold">
+            <a
+              href="/profile"
+              className="text-[#5C27FE] flex justify-between items-center gap-2 text-2xl font-semibold"
+            >
               Back to
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 20.25a8.25 8.25 0 0115 0" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="w-6 h-6"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4.5 20.25a8.25 8.25 0 0115 0"
+                />
               </svg>
             </a>
           </div>
@@ -126,8 +231,8 @@ const EditProfile = () => {
             <input
               style={{ background: "#fff", color: "#111" }}
               className="w-full border border-gray-800 rounded px-3 py-2"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              value={fullnameState}
+              onChange={(e) => setFullnameState(e.target.value)}
             />
           </div>
           <div>
@@ -146,6 +251,7 @@ const EditProfile = () => {
               value={genderState}
               onChange={(e) => setGenderState(e.target.value)}
             >
+              <option value="">Select</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
               <option value="Others">Others</option>
@@ -157,8 +263,8 @@ const EditProfile = () => {
               type="date"
               style={{ background: "#fff", color: "#111" }}
               className="w-full border border-gray-800 rounded px-3 py-2"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
+              value={dobState}
+              onChange={(e) => setDobState(e.target.value)}
             />
           </div>
         </div>
@@ -179,9 +285,9 @@ const EditProfile = () => {
           <input
             style={{ background: "#fff", color: "#111" }}
             className="w-full border border-gray-800 rounded px-3 py-2"
-            value={vibeDescription}
+            value={vibeDescriptionState}
             placeholder="What Your Vibe Says About You"
-            onChange={(e) => setVibeDescription(e.target.value)}
+            onChange={(e) => setVibeDescriptionState(e.target.value)}
           />
         </div>
 
@@ -190,8 +296,8 @@ const EditProfile = () => {
           <textarea
             style={{ color: "#111" }}
             className="w-full border border-gray-800 rounded px-3 py-2"
-            value={aboutMe}
-            onChange={(e) => setAboutMe(e.target.value)}
+            value={aboutMeState}
+            onChange={(e) => setAboutMeState(e.target.value)}
             rows={3}
             placeholder="About yourself"
           />
@@ -203,9 +309,10 @@ const EditProfile = () => {
         <div className="mt-6 text-center">
           <button
             onClick={handleSave}
-            className="bg-[#5C27FE] text-white font-semibold px-8 py-2 rounded hover:bg-[#4b1eea] transition"
+            disabled={saving}
+            className="bg-[#5C27FE] disabled:opacity-50 text-white font-semibold px-8 py-2 rounded hover:bg-[#4b1eea] transition"
           >
-            Save
+            {saving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>

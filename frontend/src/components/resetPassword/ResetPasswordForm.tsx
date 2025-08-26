@@ -87,7 +87,7 @@ const ResetPasswordForm = () => {
   return (
     <div
       className="flex flex-col items-center justify-center h-screen text-white"
-      style={{ background: "linear-gradient(135deg, #2B0889, #080429)" }}
+      style={{ background: "transparent" }}
     >
       <div className="flex items-center mb-8">
         <div className="w-25 h-25 mr-2">

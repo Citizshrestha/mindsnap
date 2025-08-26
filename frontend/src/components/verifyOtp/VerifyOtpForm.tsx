@@ -76,7 +76,7 @@ const VerifyOtpForm = () => {
 
   return (
     <div
-      style={{ background: "linear-gradient(135deg, #2B0889, #080429)" }}
+      style={{ background: "transparent" }}
       className="flex flex-col items-center justify-center h-screen text-white "
     >
       <div className="flex items-center mb-8">

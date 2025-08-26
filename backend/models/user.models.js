@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true, // Ensure this is enforced
+      unique: true, 
       trim: true,
     },
     password: {
@@ -25,6 +25,15 @@ const userSchema = new mongoose.Schema(
       required: [true, "Please enter a password"],
       minlength: 6,
       trim: true,
+    },
+    gender: {
+      type: String,
+      enum: ['Male','Female','Others',''],
+      default: "",
+    },
+    dob:{
+      type: Date,
+      default: null,
     },
     profilePicture: {
       type: String,
@@ -56,6 +65,7 @@ const userSchema = new mongoose.Schema(
     },
     resetOtp: {
       type: String,
+      
       default: "",
     },
     resetOtpExpireAt: {

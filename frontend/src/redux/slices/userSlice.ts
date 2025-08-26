@@ -7,7 +7,7 @@ interface UserState {
   username: string;
   gender: string;
   vibe: string;
-  fullName: string;
+  fullname: string;
   dob: string;
   vibeDescription: string;
   aboutMe: string;
@@ -18,7 +18,7 @@ const initialState: UserState = {
   username: localStorage.getItem("username") || "Guest",
   gender: localStorage.getItem("gender") || "None",
   vibe: localStorage.getItem("vibe") || "VIBE",
-  fullName: localStorage.getItem("fullName") || "",
+  fullname: localStorage.getItem("fullname") || "",
   dob: localStorage.getItem("dob") || "",
   vibeDescription: localStorage.getItem("vibeDescription") || "",
   aboutMe: localStorage.getItem("aboutMe") || "",
@@ -45,8 +45,8 @@ const userSlice = createSlice({
       localStorage.setItem("vibe", action.payload);
     },
     setFullName: (state, action: PayloadAction<string>) => {
-      state.fullName = action.payload;
-      localStorage.setItem("fullName", action.payload);
+      state.fullname = action.payload;
+      localStorage.setItem("fullname", action.payload);
     },
     setDob: (state, action: PayloadAction<string>) => {
       state.dob = action.payload;

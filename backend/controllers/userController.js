@@ -30,14 +30,14 @@ export const getUserProfileInfo =  asyncHandler(async(req,res) => {
 
 // @route patch /api/users/updateUserProfile
 export const updateUserProfile = asyncHandler(async (req, res) => {
-  const { profilePicture } = req.body;
+  const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture } = req.body;
 
-  if (!profilePicture) {
-    return res.status(400).json({
-      success: false,
-      message: "Profile picture URL is required",
-    });
-  }
+  // if (!profilePicture) {
+  //   return res.status(400).json({
+  //     success: false,
+  //     message: "Profile picture URL is required",
+  //   });
+  // }
 
   const user = await User.findById(req.user._id);
   if (!user) {
@@ -47,23 +47,49 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     });
   }
 
+   if (fullname !== undefined) user.fullname = fullname;
+   if (username !== undefined) user.username = username;
+   if (gender !== undefined) user.gender = gender;
+   if (dob !== undefined) user.dob = dob;
+   if (vibe !== undefined) user.vibe = vibe;
+   if (vibeDescription !== undefined) user.vibeDescription = vibeDescription;
+   if (aboutMe !== undefined) user.aboutMe = aboutMe;
+ 
+
+    // Only update profile picture if a new one is provided
+   if (profilePicture !== undefined && profilePicture !== user.profilePicture){
+     // Delete old profile picture from Cloudinary if it exists
   if (user.profilePicture) {
     const publicId = user.profilePicture.split("/").pop()?.split(".")[0];
     if (publicId) {
       try {
-        await cloudinary.uploader.destroy(publicId);
+       const res = await cloudinary.uploader.destroy(publicId);
+        if (res.result !== 'ok'){
+          console.warn(`Failed to delete Cloudinary image: ${publicId}`);
+        }
       } catch (err) {
         console.error("Error deleting old image from Cloudinary:", err);
       }
     }
   }
-
   user.profilePicture = profilePicture;
+}
+
+
   await user.save();
 
   return res.status(200).json({
     success: true,
     message: "Profile picture updated successfully",
+    fullname: user.fullname,
+    username: user.username,
+    gender: user.gender, 
+    dob :  user.dob,
+    vibe: user.vibe,
+    vibeDescription : user.vibeDescription,
+    aboutMe: user.aboutMe,
+    postsCount: user.postsCount,
+
     profilePicture: user.profilePicture,
   });
 });
@@ -73,10 +99,10 @@ export const generateSignature = asyncHandler(async(req,res) => {
   const timestamp =  Math.round(new Date().getTime() / 1000);
   const signature = cloudinary.utils.api_sign_request(
     {timestamp},
-    process.env.VITE_CLOUDINARY_API_SECRET,
+    process.env.CLOUDINARY_API_SECRET,
   );
 
-  return res.status(400).json({
+  return res.status(200).json({
     signature,
     timestamp,
     cloudName: process.env.VITE_CLOUDINARY_CLOUD_NAME,

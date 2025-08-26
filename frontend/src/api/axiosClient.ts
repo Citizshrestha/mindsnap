@@ -38,6 +38,7 @@ axiosClient.interceptors.response.use(
 
             } catch (refreshErr) {
                 localStorage.removeItem('accessToken');
+                localStorage.removeItem('userId');
                 window.location.href = "/";
                 return Promise.reject(refreshErr);
             }

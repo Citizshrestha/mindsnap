@@ -3,6 +3,9 @@ import express from 'express';
 import connectDB from './config/db.js';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
+
+// Routes
 import authRoutes from './routes/authRoutes.js';
 import postRoutes from './routes/postRoutes.js';
 import userRoutes from './routes/userRoutes.js';
@@ -13,30 +16,41 @@ import storyRoutes from './routes/storyRoutes.js';
 import userTagRoutes from './routes/userTagRoutes.js';
 import likeRoutes from './routes/likeRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
-import cookieParser from 'cookie-parser';
 
 dotenv.config();
 const app = express();
 
-// Middleware
+// ---------------------- MIDDLEWARE ----------------------
+
+// Body parser
 app.use(express.json());
+
+// Cookie parser
 app.use(cookieParser());
+
+// COEP & COOP for cross-origin resources (Cloudinary images/videos)
+app.use((req, res, next) => {
+  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless'); // allows cross-origin resources without cookies
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');      // required with COEP
+  next();
+});
+
+// CORS for API requests
 app.use(cors({
-  origin: "http://localhost:5173", 
-  credentials: true, // Allow cookies
-  methods: ['GET', 'POST', 'PUT', 'PATCH','DELETE', 'OPTIONS'], // Allow these methods
-  allowedHeaders: ['Content-Type', 'Authorization'], // Allow these headers
+  origin: 'http://localhost:5173', // frontend URL
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
 }));
 
-// Connect Database (MongoDB)
+// ---------------------- DATABASE ----------------------
 connectDB();
 
-// Route Testing
+// ---------------------- ROUTES ----------------------
 app.get('/', (req, res) => {
   res.send('MindSnap API is running...');
 });
 
-// Register Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/users', userRoutes);
@@ -48,7 +62,7 @@ app.use('/api/user-tags', userTagRoutes);
 app.use('/api/likes', likeRoutes);
 app.use('/api/notifications', notificationRoutes);
 
-// Error-handling middleware
+// ---------------------- ERROR HANDLER ----------------------
 app.use((err, req, res, next) => {
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
@@ -57,6 +71,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start server
+// ---------------------- START SERVER ----------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

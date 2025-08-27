@@ -47,7 +47,7 @@ const Sidebar = () => {
     background: location.pathname === path ? "#F5F6FA" : "transparent",
     color: location.pathname === path ? "#611DD0" : "#F5F6FA",
     fontSize: '16px',
-    position: 'relative', // Allow positioning of hover div
+    position: 'relative', 
     transition: "all 0.3s ease-in"
   });
 
@@ -55,7 +55,7 @@ const Sidebar = () => {
   const tooltipStyle: React.CSSProperties = {
     position: 'absolute',
     top: '50%',
-    left: '100%', // Changed: Position to the right of the link (outside the sidebar)
+    left: '100%', 
     transform: 'translateY(-50%)',
     background: '#fff',
     color: '#611DD0',
@@ -63,10 +63,10 @@ const Sidebar = () => {
     borderRadius: '5px',
     whiteSpace: 'nowrap',
     boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-    marginLeft: '10px', // Adjusted: Reduced margin to fine-tune positioning
-    opacity: 0, // Hidden by default
-    visibility: 'hidden', // Hidden by default
-    transition: 'opacity 0.2s ease, visibility 0s linear 0.2s', // Delay visibility change
+    marginLeft: '10px', 
+    opacity: 0, 
+    visibility: 'hidden', 
+    transition: 'opacity 0.2s ease, visibility 0s linear 0.2s', 
     zIndex: 10,
   };
 

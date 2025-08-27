@@ -42,3 +42,6 @@
  
 }
 
+.tooltip {
+  pointer-events: none; /* Prevent tooltip from blocking mouse events */
+}

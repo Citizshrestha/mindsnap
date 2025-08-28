@@ -70,6 +70,34 @@ const Sidebar = () => {
     zIndex: 10,
   };
 
+  // safe hover handler (fixes null tooltip error)
+  const showTooltip = (e: React.MouseEvent<HTMLElement>) => {
+    if (isCollapsed){
+      const tooltip = e.currentTarget.querySelector('.tooltip') as HTMLElement | null;
+      if (tooltip){
+        tooltip.style.opacity = '1';
+        tooltip.style.visibility = 'visible';
+        tooltip.style.transition = 'opacity 0.2 ease';
+      }
+    }
+  }
+
+
+  const hideTooltip=  (e: React.MouseEvent<HTMLElement>) => {
+    if(isCollapsed){
+      const tooltip = e.currentTarget.querySelector('.tooltip') as HTMLElement | null;
+      if (tooltip){
+        tooltip.style.opacity = '0';
+        tooltip.style.visibility = 'hidden';
+        tooltip.style.transition = 'opacity 0.2 ease, visibility 0s linear 0.2s';
+
+      }
+    }
+  }
+
+
+
+
   const handleLogout = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     localStorage.removeItem('userSession');
@@ -82,8 +110,8 @@ const Sidebar = () => {
         href="/home"
         style={linkStyle('/home')}
         onClick={(e) => { e.preventDefault(); navigate('/home'); }}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {imgErr ? (
           <FaHome size={23.5} />
@@ -98,8 +126,8 @@ const Sidebar = () => {
         href="/posts"
         style={linkStyle('/posts')}
         onClick={(e) => { e.preventDefault(); navigate('/posts'); }}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {imgErr ? (
           <FaPodcast size={23.5} />
@@ -114,8 +142,8 @@ const Sidebar = () => {
         href="/create-post"
         style={linkStyle('/create-post')}
         onClick={(e) => { e.preventDefault(); navigate('/create-post'); }}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {imgErr ? (
           <FiPlus size={24} />
@@ -130,8 +158,8 @@ const Sidebar = () => {
         href="/messages"
         style={linkStyle('/messages')}
         onClick={(e) => { e.preventDefault(); navigate('/messages'); }}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {imgErr ? (
           <FaEnvelope size={23.5} />
@@ -146,8 +174,8 @@ const Sidebar = () => {
         href="/themes"
         style={linkStyle("/themes")}
         onClick={(e) => { e.preventDefault(); navigate('/themes'); }}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {imgErr ? (
           <FaPaintBrush size={25} />
@@ -162,8 +190,8 @@ const Sidebar = () => {
         href="/logout"
         style={{ ...linkStyle('/logout'), marginTop: "auto" }}
         onClick={handleLogout}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {imgErr ? (
           <FaSignOutAlt size={23.5} />
@@ -188,8 +216,8 @@ const Sidebar = () => {
           color: "#611DD0",
           alignSelf: "center"
         }}
-        onMouseEnter={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '1'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'visible'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease'; }}
-        onMouseLeave={(e) => { if (isCollapsed) (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.opacity = '0'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.visibility = 'hidden'; (e.currentTarget.querySelector('.tooltip') as HTMLElement).style.transition = 'opacity 0.2s ease, visibility 0s linear 0.2s'; }}
+        onMouseEnter={showTooltip}
+        onMouseLeave={hideTooltip}
       >
         {isCollapsed ? '→' : '←'}
         {isCollapsed && <div className="tooltip mt-60" style={tooltipStyle}>{isCollapsed ? 'Close Sidebar' : 'Open Sidebar'}</div>}

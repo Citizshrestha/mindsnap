@@ -7,6 +7,7 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -14,8 +15,21 @@ const messageSchema = new mongoose.Schema(
     },
     content: {
       type: String,
-      required: true,
       trim: true,
+    },
+    messageType: {
+      type: String,
+      enum: ['text','image','video','file','audio','system'],
+      default: "text",
+    },
+    mediaUrl: {
+      type: String,
+    },
+    fileName: {
+      type: String,
+    },
+    fileSize: {
+      type: Number,
     },
     status: {
       type: String,

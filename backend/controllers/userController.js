@@ -109,3 +109,71 @@ export const generateSignature = asyncHandler(async(req,res) => {
     apiKey: process.env.VITE_CLOUDINARY_API_KEY
   });
 });
+
+
+// @route GET /api/users/search?query=...
+export const searchUsers = asyncHandler(async (req, res) => {
+  const { query } = req.query;
+  if (!query) return res.json([]);
+
+  const users = await User.find({
+    username: { $regex: query, $options: "i" } // case-insensitive
+  }).select("username fullname profilePicture followers following");
+
+  // Map to indicate if current user is following each result
+  const results = users.map(user => {
+    return {
+      _id: user._id,
+      username: user.username,
+      fullname: user.fullname,
+      profilePicture: user.profilePicture,
+      isFollowing: user.followers.includes(req.user._id),
+    };
+  });
+
+  res.status(200).json(results);
+});
+
+// @route POST /api/users/:id/follow
+export const followUser = asyncHandler(async (req, res) => {
+  const targetId = req.params.id;
+  const userId = req.user._id;
+
+  if (userId.toString() === targetId) {
+    return res.status(400).json({ success: false, message: "You cannot follow yourself" });
+  }
+
+  const targetUser = await User.findById(targetId);
+  const currentUser = await User.findById(userId);
+
+  if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+
+  if (!currentUser.following.includes(targetId)) {
+    currentUser.following.push(targetId);
+    targetUser.followers.push(userId);
+
+    await currentUser.save();
+    await targetUser.save();
+  }
+
+  res.status(200).json({ success: true, message: "Followed successfully" });
+});
+
+// @route POST /api/users/:id/unfollow
+export const unfollowUser = asyncHandler(async (req, res) => {
+  const targetId = req.params.id;
+  const userId = req.user._id;
+
+  const targetUser = await User.findById(targetId);
+  const currentUser = await User.findById(userId);
+
+  if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+
+  currentUser.following = currentUser.following.filter(id => id.toString() !== targetId);
+  targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId);
+
+  await currentUser.save();
+  await targetUser.save();
+
+  res.status(200).json({ success: true, message: "Unfollowed successfully" });
+});

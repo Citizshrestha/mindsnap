@@ -28,7 +28,8 @@ const MoodMaker: React.FC = () => {
     const existing = lastData ? JSON.parse(lastData) : {};
 
     do {
-      newMotivation = dailyMotivations[Math.floor(Math.random() * dailyMotivations.length)];
+      newMotivation =
+        dailyMotivations[Math.floor(Math.random() * dailyMotivations.length)];
     } while (existing.lastMotivation === newMotivation);
 
     do {
@@ -38,7 +39,8 @@ const MoodMaker: React.FC = () => {
     do {
       const moods: Array<keyof typeof moodSongs> = ["happy", "sad", "angry"];
       const mood = moods[Math.floor(Math.random() * moods.length)];
-      newSong = moodSongs[mood][Math.floor(Math.random() * moodSongs[mood].length)];
+      newSong =
+        moodSongs[mood][Math.floor(Math.random() * moodSongs[mood].length)];
     } while (existing.lastSong?.title === newSong.title);
 
     setDailyMotivation(newMotivation);
@@ -63,7 +65,8 @@ const MoodMaker: React.FC = () => {
     const oneWeek = 7 * 24 * 60 * 60 * 1000;
 
     if (lastData) {
-      const { lastMotivation, lastJoy, lastSong, lastUpdate } = JSON.parse(lastData);
+      const { lastMotivation, lastJoy, lastSong, lastUpdate } =
+        JSON.parse(lastData);
       if (now - lastUpdate < oneWeek) {
         setDailyMotivation(lastMotivation);
         setLittleJoy(lastJoy);
@@ -78,7 +81,8 @@ const MoodMaker: React.FC = () => {
 
   /** Mood select → show recommendation */
   const handleMoodSelect = (mood: "happy" | "sad" | "angry") => {
-    const recommended = moodSongs[mood][Math.floor(Math.random() * moodSongs[mood].length)];
+    const recommended =
+      moodSongs[mood][Math.floor(Math.random() * moodSongs[mood].length)];
     setRecommendedSong(recommended);
     setShowRecommendation(true);
   };
@@ -103,30 +107,53 @@ const MoodMaker: React.FC = () => {
   };
 
   /** Animation styles for emojis */
-  const animationStyle = "transition-all duration-300 ease-in-out transform hover:scale-105";
+  const animationStyle =
+    "transition-all duration-300 ease-in-out transform hover:scale-105";
 
   return (
     <div className="mood-maker w-[320px] mr-5">
-      {/* Daily Motivation */}
-      <div className="p-4 bg-white rounded-2xl shadow">
-        <h3 className="text-xl font-semibold text-black mb-2">💡 Daily Motivation</h3>
-        <p className="text-gray-600 italic">{dailyMotivation}</p>
-      </div>
+      {/* Daily Motivation - Hidden when music is playing */}
+      {!isPlaying && (
+        <div className="p-4 bg-white rounded-2xl shadow">
+          <h3 className="text-xl font-semibold text-black mb-2">
+            💡 Daily Motivation
+          </h3>
+          <p className="text-gray-600 italic">{dailyMotivation}</p>
+        </div>
+      )}
 
       {/* Mood Booster */}
       <div className="mt-5 p-4 bg-white rounded-2xl shadow">
-        <h3 className="text-xl font-semibold text-pink-600 mb-2">Mood Booster</h3>
+        <h3 className="text-xl font-semibold text-pink-600 mb-2">
+          Mood Booster
+        </h3>
         <p className="text-gray-600">How are you feeling today?</p>
         <div className="flex justify-around mt-2 text-2xl">
-          <span className={`${animationStyle} cursor-pointer`} onClick={() => handleMoodSelect("happy")}>😊</span>
-          <span className={`${animationStyle} cursor-pointer`} onClick={() => handleMoodSelect("sad")}>😢</span>
-          <span className={`${animationStyle} cursor-pointer`} onClick={() => handleMoodSelect("angry")}>😡</span>
+          <span
+            className={`${animationStyle} cursor-pointer`}
+            onClick={() => handleMoodSelect("happy")}
+          >
+            😊
+          </span>
+          <span
+            className={`${animationStyle} cursor-pointer`}
+            onClick={() => handleMoodSelect("sad")}
+          >
+            😢
+          </span>
+          <span
+            className={`${animationStyle} cursor-pointer`}
+            onClick={() => handleMoodSelect("angry")}
+          >
+            😡
+          </span>
         </div>
 
         {showRecommendation && recommendedSong && (
           <div className="mt-2 p-2 bg-purple-100 rounded-lg text-center animate-fadeIn">
             <p className="text-purple-600">
-              Your today's chill music is "{recommendedSong.title}". Want to listen?
+              Your today's chill music is "{recommendedSong.title}". Want to
+              listen?
             </p>
             <div className="mt-2">
               <button
@@ -145,63 +172,72 @@ const MoodMaker: React.FC = () => {
           </div>
         )}
 
-        <p className="text-gray-600 mt-2 italic">"It’s okay to pause. Breathe. Reset."</p>
+        <p className="text-gray-600 mt-2 italic">
+          "It's okay to pause. Breathe. Reset."
+        </p>
       </div>
 
       {/* Little Joy */}
-      <div className="mt-5 p-4 bg-white rounded-2xl shadow">
-        <h3 className="text-xl font-semibold text-green-600 mb-2">Little Joy of the Day</h3>
+      {!isPlaying && <div className="mt-5 p-4 bg-white rounded-2xl shadow">
+        <h3 className="text-xl font-semibold text-green-600 mb-2">
+          Little Joy of the Day
+        </h3>
         <ul className="text-gray-600 list-disc pl-5">
           <li>{littleJoy}</li>
         </ul>
-      </div>
+      </div>}
 
-      {/* Chill Music */}
-      <div className="mt-5 p-4 bg-white rounded-2xl shadow text-center">
-        <h3 className="text-xl font-semibold text-purple-600 mb-2">🎧 Chill Corner</h3>
+      {/* Chill Music - Fixed scrollable container */}
+      <div className="mt-4 bg-white rounded-2xl shadow text-center overflow-hidden flex flex-col max-h-[500px]">
+        <div className="p-4 overflow-y-auto flex-grow">
+          <h3 className="text-xl font-semibold text-purple-600 mb-2 sticky top-0 bg-white py-2 z-10">
+            🎧 Chill Corner
+          </h3>
 
-        {currentSong && (
-          <>
-            <p className="text-gray-600 mb-2">
-              {currentSong.title}
+          {currentSong && (
+            <>
+              <p className="text-gray-600 mb-2">
+                {currentSong.title}
+              </p>
               {isPlaying && <span className="ml-2 text-purple-600">▶ Playing</span>}
-            </p>
-            <button
-              onClick={() => handlePlayPause(currentSong)}
-              className="mt-1 bg-purple-600 text-white px-4 py-2 rounded-full"
-            >
-              {isPlaying ? "Pause" : "Play"}
-            </button>
 
-            {/* ReactPlayer for YouTube or MP3 */}
-            <div className="mt-4">
-              <ReactPlayer
-                src={currentSong.url}
-                playing={isPlaying}
-                controls={true}
-                volume={volume}
-                width="100%"
-                height="50px"
-              />
-            </div>
-          </>
-        )}
+              {/* ReactPlayer for YouTube or MP3 */}
+              <div className="mt-2">
+                <ReactPlayer
+                  src={currentSong.url}
+                  playing={isPlaying}
+                  controls={true}
+                  volume={volume}
+                  width="100%"
+                  height="50px"
+                />
+              </div>
 
-        {/* Volume Control */}
-        <div className="mt-4">
-          <label htmlFor="volume" className="text-gray-600 mr-2">
-            Volume:
-          </label>
-          <input
-            id="volume"
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={volume}
-            onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="w-full"
-          />
+              <button
+                onClick={() => handlePlayPause(currentSong)}
+                className="mt-1 bg-purple-600 text-white px-4 py-2 rounded-full"
+              >
+                {isPlaying ? "Pause" : "Play"}
+              </button>
+            </>
+          )}
+
+          {/* Volume Control - Now properly visible */}
+          <div className="mt-2 pb-2">
+            <label htmlFor="volume" className="text-gray-600 mr-2">
+              Volume:
+            </label>
+            <input
+              id="volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={volume}
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              className="w-full"
+            />
+          </div>
         </div>
       </div>
     </div>

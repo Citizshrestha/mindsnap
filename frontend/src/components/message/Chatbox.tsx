@@ -1,87 +1,136 @@
-import { useState, useRef, useEffect } from "react";
-import "./chat.css";
+// src/ChatBox.tsx
+import React, { useState } from 'react';
+import { useGetMessagesQuery, useSendMessageMutation } from '../../services/messageApi'; 
+import { useSelector } from 'react-redux';
+import type { RootState } from '../../redux/store'; 
+import type { Message as MessageType } from '../../services/messageApi'; 
 
-interface Message {
-  id: number;
-  sender: string;
-  text: string;
-  timestamp: string;
-  isSent: boolean;
+interface ChatBoxProps {
+  activeChat: string;
 }
 
-const ChatBox: React.FC<{ selectedChatId: number | null }> = ({ selectedChatId }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+const ChatBox: React.FC<ChatBoxProps> = ({ activeChat }) => {
+  const { currentConversationId } = useSelector((state: RootState) => state.message);
+  const { data: messages, error, isLoading } = useGetMessagesQuery(currentConversationId || '', { 
+    skip: !currentConversationId 
+  });
+  const [sendMessage] = useSendMessageMutation();
+  const [messageText, setMessageText] = useState('');
 
-  // Simulate messages for the selected chat (replace with API call)
-  useEffect(() => {
-    if (selectedChatId) {
-      setMessages([
-        { id: 1, sender: "Alice", text: "Hi there!", timestamp: "2025-08-05 06:00", isSent: false },
-        { id: 2, sender: "You", text: "Hello! How can I help?", timestamp: "2025-08-05 06:01", isSent: true },
-        { id: 3, sender: "Alice", text: "Just checking in!", timestamp: "2025-08-05 06:02", isSent: false },
-      ]);
-    } else {
-      setMessages([]);
-    }
-  }, [selectedChatId]);
+  // Determine if the current user is the sender
+  const userId = 'your_user_id_here'; // Replace with actual user ID from auth
+  const isMe = (msg: MessageType) => msg.sender._id === userId;
 
-  // Scroll to the latest message
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  const handleSendMessage = () => {
-    if (newMessage.trim() && selectedChatId) {
-      const newMsg: Message = {
-        id: Date.now(),
-        sender: "You",
-        text: newMessage,
-        timestamp: new Date().toLocaleTimeString(),
-        isSent: true,
-      };
-      setMessages([...messages, newMsg]);
-      setNewMessage("");
-      // Simulate sending to server (replace with API call)
+  const handleSend = async () => {
+    if (messageText && currentConversationId) {
+      try {
+        await sendMessage({
+          conversationId: currentConversationId,
+          receiverId: 'another_user_id_here',
+          content: messageText,
+          type: 'text',
+        }).unwrap();
+        setMessageText('');
+      } catch (err) {
+        console.error('Failed to send message:', err);
+      }
     }
   };
 
+  if (isLoading) return <div>Loading messages...</div>;
+  if (error) {
+    // Handle error safely with proper typing
+    let errorMessage = 'Failed to load messages. Please try again.';
+    
+    if (typeof error === 'object' && error !== null) {
+      if ('data' in error && typeof error.data === 'object' && error.data !== null && 'message' in error.data) {
+        errorMessage = (error.data as { message: string }).message;
+      } else if ('error' in error) {
+        errorMessage = String(error.error);
+      } else if ('status' in error) {
+        errorMessage = `Error status: ${error.status}`;
+      }
+    }
+    
+    return <div className="p-4 text-red-500">Error loading messages: {errorMessage}</div>;
+  }
+
   return (
-    <div className="chat-box flex-1 bg-white rounded-2xl   shadow p-4  h-[calc(100vh-80px)] w-[880px]  flex flex-col">
-      <h3 className="text-xl font-semibold text-[#611DD0] mb-4">
-        {selectedChatId ? `Chat with ${["Alice", "Bob", "Charlie"][selectedChatId - 1]}` : "Select a Chat"}
-      </h3>
-      <div className="messages-container flex-1 overflow-y-auto mb-4">
-        {messages.map((msg) => (
+    <main className="flex-1  bg-white rounded-tl-3xl flex flex-col">
+      {/* Chat Header */}
+      <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center space-x-4">
+          <img
+            src={activeChat ? `https://i.pravatar.cc/40?u=${activeChat}` : 'https://i.pravatar.cc/40'}
+            alt="Avatar"
+            className="w-10 h-10 rounded-full"
+          />
+          <h2 className="font-bold text-xl">{activeChat || 'No Chat Selected'}</h2>
+        </div>
+        <div className="flex space-x-4 text-purple-600">
+          <button className="hover:text-purple-800">📞</button>
+          <button className="hover:text-purple-800">🎥</button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4">
+        {messages?.map((msg) => (
           <div
-            key={msg.id}
-            className={`message p-2 rounded-lg mb-2 max-w-[70%] ${msg.isSent ? "bg-[#A084E8] text-white self-end" : "bg-gray-200 text-black"}`}
+            key={msg._id}
+            className={`flex ${isMe(msg) ? 'justify-end' : 'justify-start'}`}
           >
-            <p className="text-sm">{msg.text}</p>
-            <span className="text-xs text-gray-500">{msg.timestamp}</span>
+            <div
+              className={`rounded-2xl p-3 max-w-xs ${
+                isMe(msg) ? 'bg-purple-600 text-white' : 'bg-gray-100 text-black'
+              }`}
+            >
+              {msg.messageType === 'text' && <p>{msg.content}</p>}
+              {msg.messageType === 'image' && msg.mediaUrl && (
+                <img src={msg.mediaUrl} alt={msg.fileName || 'Image'} className="max-w-full h-auto rounded-lg" />
+              )}
+              {msg.messageType === 'video' && msg.mediaUrl && (
+                <video controls className="max-w-full h-auto rounded-lg">
+                  <source src={msg.mediaUrl} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+              )}
+              {msg.messageType === 'audio' && msg.mediaUrl && (
+                <audio controls className="w-full">
+                  <source src={msg.mediaUrl} type="audio/mpeg" />
+                  Your browser does not support the audio element.
+                </audio>
+              )}
+              {msg.messageType === 'file' && msg.mediaUrl && (
+                <a href={msg.mediaUrl} download={msg.fileName} className="text-blue-500 underline">
+                  {msg.fileName} ({msg.fileSize ? `${(msg.fileSize / 1024).toFixed(2)} KB` : 'Unknown size'})
+                </a>
+              )}
+              <div className="text-xs opacity-70 mt-1">
+                {new Date(msg.createdAt).toLocaleTimeString()} - {msg.status}
+              </div>
+            </div>
           </div>
         ))}
-        <div ref={messagesEndRef} />
       </div>
-      <div className="input-container flex">
+
+      {/* Input */}
+      <div className="p-4 border-t flex">
         <input
           type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1 p-2 text-white rounded-l-full border border-gray-300 focus:outline-none"
-          disabled={!selectedChatId}
+          value={messageText}
+          onChange={(e) => setMessageText(e.target.value)}
+          placeholder="Type your message..."
+          className="flex-1 bg-black p-3 border text-white rounded-full focus:outline-none"
         />
         <button
-          onClick={handleSendMessage}
-          className="bg-gradient-to-r from-[#611DD0] to-[#A084E8] text-white px-4 py-2 rounded-r-full hover:scale-105 transition"
-          disabled={!selectedChatId}
+          onClick={handleSend}
+          className="bg-purple-600 text-white px-6 py-3 ml-4 rounded-full hover:bg-purple-700"
         >
           Send
         </button>
       </div>
-    </div>
+    </main>
   );
 };
 

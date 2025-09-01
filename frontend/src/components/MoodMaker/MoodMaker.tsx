@@ -222,7 +222,7 @@ const MoodMaker: React.FC = () => {
             </>
           )}
 
-          {/* Volume Control - Now properly visible */}
+          {/* Volume Control */}
           <div className="mt-2 pb-2">
             <label htmlFor="volume" className="text-gray-600 mr-2">
               Volume:

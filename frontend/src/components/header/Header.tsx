@@ -1,128 +1,152 @@
+// src/components/Header.tsx
 import { FiBell, FiHome, FiSearch } from "react-icons/fi";
-import "./header.css";
 import { MdPerson3, MdPersonAdd } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { toast } from "react-toastify";
-import settingImg from "../../../public/images/settings.png";
-import defaultAvatar from "../../../public/images/default.jpg";
 import { useSelector, useDispatch } from "react-redux";
 import { setProfilePicture, setUsername } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
-import logoImg from "../../../public/images/mindsnap logo.png";
 
+// Import images
+import logoImg from "../../../public/images/mindsnap logo.png";
+import settingImg from "../../../public/images/settings.png";
+import defaultAvatar from "../../../public/images/default.jpg";
+
+import "./header.css";
+import Loader from "../Loader";
+
+interface CloudinaryUploadResponse {
+  secure_url: string;
+  error?: { message: string };
+}
+
+interface UpdateProfileResponse {
+  data: {
+    success: boolean;
+    message?: string;
+    [key: string]: unknown;
+  };
+}
+
+interface UserProfileResponse {
+  data: {
+    username: string;
+    profilePicture: string;
+    [key: string]: unknown;
+  };
+}
+
+interface SearchUser {
+  _id: string;
+  username: string;
+  fullname?: string;
+  profilePicture?: string;
+  isFollowing?: boolean;
+}
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch<AppDispatch>();
-  const { profilePicture, username } = useSelector((state: RootState) => state.user);
-  const [error, setError] = useState<string>("");
+  const { profilePicture, username: currentUsername } = useSelector(
+    (state: RootState) => state.user
+  );
+
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
-  interface CloudinaryUploadResponse {
-    secure_url: string;
-    error?: { message?: string };
-  }
-
-  interface UpdateProfileResponse {
-    data: {
-      success: boolean;
-      [key: string]: unknown;
-    };
-  }
-
-  interface UserProfileResponse {
-    data: {
-      username: string;
-      profilePicture: string;
-      [key: string]: unknown;
-    };
-  }
-
+  // Fetch user profile if not already in Redux
   useEffect(() => {
     const fetchUserData = async () => {
-      if (!username) {
+      if (!currentUsername) {
         try {
           const token = localStorage.getItem("accessToken");
           if (!token) {
             setError("No token available");
+            toast.error("Please log in to continue.");
             return;
           }
-          const response: UserProfileResponse = await axiosClient.get("/api/users/profile");
+
+          const response: UserProfileResponse = await axiosClient.get(
+            "/api/users/profile"
+          );
           dispatch(setUsername(response.data.username));
           if (response.data.profilePicture) {
             dispatch(setProfilePicture(response.data.profilePicture));
           }
         } catch (err) {
-          setError(`Error fetching user data: ${err}`);
+          const message =
+            err instanceof Error ? err.message : "Failed to fetch user data";
+          setError(message);
+          toast.error(`Error: ${message}`);
         }
       }
     };
     fetchUserData();
-  }, [username, dispatch]);
+  }, [currentUsername, dispatch]);
 
+  // Handle profile picture upload
   const handleImageUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
-  ): Promise<void> => {
+  ) => {
     const file: File | undefined = event.target.files?.[0];
     if (!file) return;
 
-    const allowedTypes: string[] = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     if (!allowedTypes.includes(file.type)) {
-      setError("Please select a valid image file (JPEG, PNG, or GIF)");
-      toast.error("❌Please select a valid image file (JPEG, PNG, or GIF)");
+      toast.error("❌ Please select a valid image file (JPEG, PNG, GIF, WEBP)");
       return;
     }
 
-    const maxSizeInBytes: number = 50 * 1020 * 1020; // 50MB
-    if (file.size > maxSizeInBytes) {
-      setError("File Size exceeds 50MB limit.");
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+      toast.error("File size exceeds 50MB limit.");
       return;
     }
 
     try {
-      setError("");
       setLoading(true);
-
-      const formData: FormData = new FormData();
+      const formData = new FormData();
       formData.append("file", file);
-      formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET);
+      formData.append(
+        "upload_preset",
+        import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || ""
+      );
       formData.append("folder", "mindsnap/profile_pictures");
 
-      console.log("Uploading image to Cloudinary");
-      const response: Response = await fetch(
-        `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
+      const res = await fetch(
+        `https://api.cloudinary.com/v1_1/${
+          import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+        }/image/upload`,
+        { method: "POST", body: formData }
       );
 
-      const data: CloudinaryUploadResponse = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error?.message || `Cloudinary upload failed with status ${response.status}`
-        );
-      }
-      const imageUrl: string = data.secure_url;
-      console.log("Image Upload to Cloudinary: ", imageUrl);
+      const data: CloudinaryUploadResponse = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Cloudinary upload failed");
 
       const updateResp: UpdateProfileResponse = await axiosClient.patch(
         "/api/users/update-profile",
         {
-          profilePicture: imageUrl,
+          profilePicture: data.secure_url,
         }
       );
 
       if (updateResp.data.success) {
-        dispatch(setProfilePicture(imageUrl));
-        localStorage.setItem("profilePicture", imageUrl);
+        dispatch(setProfilePicture(data.secure_url));
+        localStorage.setItem("profilePicture", data.secure_url);
         toast.success("Profile Picture Updated Successfully");
+      } else {
+        throw new Error(updateResp.data.message || "Update failed");
       }
-    } catch (err: unknown) {
-      setError(`Error uploading image ${err}`);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Error uploading image";
+      setError(message);
+      toast.error(`Error: ${message}`);
     } finally {
       setLoading(false);
     }
@@ -130,178 +154,192 @@ const Header: React.FC = () => {
 
   const transformedUrl: string = profilePicture || defaultAvatar;
 
+  // Handle search
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      setSearchLoading(true);
+      const token = localStorage.getItem("accessToken");
+      if (!token) throw new Error("No token available");
+
+      const res = await axiosClient.get(
+        `/api/users/search?query=${encodeURIComponent(query)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      setSearchResults(res.data);
+    } catch (err) {
+      console.error("Search error:", err);
+      setError("Failed to search users");
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Navigate to profile
+  const handleProfileClick = (user: SearchUser) => {
+    if (user.username === currentUsername) {
+      navigate("/profile");
+    } else {
+      navigate(`/profile/${user._id}`);
+    }
+  };
+
   if (error) {
-    return <div>{error}</div>;
+    return (
+      <div className="fixed bg-[#611DD0] top-0 left-0 w-full h-20 flex items-center justify-center text-white z-50">
+        {error}{" "}
+        <button
+          onClick={() => setError(null)}
+          className="ml-2 text-red-300"
+        >
+          Dismiss
+        </button>
+      </div>
+    );
   }
 
   return (
     <div className="fixed font-poppins bg-[#611DD0] top-0 left-0 w-full h-20 flex items-center justify-between px-5 z-50">
+      {/* Logo */}
       <div className="flex items-center justify-start h-full">
-          <img
-            src={logoImg}
-            alt="SnapMind Logo"
-            className="w-22 h-22 pb-2 pl-5 object-cover rounded-full"
-          />
-        
-        <h1 style={{ margin: 0, display: "flex",paddingRight:"100px", alignItems: "center" }}>
-          <span
-            style={{
-              // background: "linear-gradient(135deg, #00ffcc, #ff00ff)",
-              // WebkitBackgroundClip: "text",
-              // backgroundClip: "text",
-              color: "white",
-              fontSize: "32px",
-              fontWeight: "bold",
-              paddingLeft: "6px",
-              marginBottom: "6px",
-            }}
-          >
-            Mind
-          </span>
-          <span style={{ fontSize: "26px", fontWeight: "bold", color: "#fff" }}>
-            Snap
-          </span>
+        <img
+          src={logoImg}
+          alt="SnapMind Logo"
+          className="w-16 h-16 pb-2 pl-5 object-cover rounded-full"
+        />
+        <h1 className="text-white text-3xl font-bold flex items-center">
+          Mind<span className="text-yellow-300">Snap</span>
         </h1>
       </div>
 
-      <div className="navlinks  flex items-center justify-between absolute left-80">
+      {/* Navigation */}
+      <div className="navlinks flex items-center justify-between absolute left-80">
+        {/* Home */}
         <a
           onClick={() => navigate("/home")}
-          className="link text-white flex mt-4  mx-2 items-center"
+          className="link text-white flex mt-4 mx-2 items-center"
           href="/home"
-          style={
-            {
-              "--underline-color": "#FFF0F5",
-              "--hover-color": "#FFF0F5",
-            } as React.CSSProperties
-          }
-          onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#FFF0F5";
-            (e.currentTarget.querySelector(
-              ".home-icon"
-            ) as HTMLElement)!.style.color = "#FFF0F5";
-            e.currentTarget.style.setProperty("--underline-color", "#FFF0F5");
-          }}
-          onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#fff";
-            (e.currentTarget.querySelector(
-              ".home-icon"
-            ) as HTMLElement)!.style.color = "#00FFFF";
-            e.currentTarget.style.setProperty("--underline-color", "#FFF0F5");
-          }}
         >
           <FiHome size={20} className="home-icon" />
           <h5 className="font-semibold text-[1.1rem] ml-2">Home</h5>
         </a>
 
+        {/* Profile */}
         <a
           onClick={() => navigate("/profile")}
           href="/profile"
-          className="link text-white flex mt-4  mx-2 items-center"
-          style={
-            {
-              "--underline-color": "#F9A8D4",
-              "--hover-color": "#F9A8D4",
-            } as React.CSSProperties
-          }
-          onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#F9A8D4";
-            (e.currentTarget.querySelector(
-              ".profile-icon"
-            ) as HTMLElement)!.style.color = "#FF00FF";
-            e.currentTarget.style.setProperty("--underline-color", "#F9A8D4");
-          }}
-          onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#fff";
-            (e.currentTarget.querySelector(
-              ".profile-icon"
-            ) as HTMLElement)!.style.color = "#FF00FF";
-            e.currentTarget.style.setProperty("--underline-color", "#F9A8D4");
-          }}
+          className="link text-white flex mt-4 mx-2 items-center"
         >
           <MdPerson3 size={22} className="profile-icon" />
           <h5 className="font-semibold text-[1.1rem] ml-2">Profile</h5>
         </a>
 
+        {/* Explore */}
         <a
           onClick={() => navigate("/explore")}
           href="/explore"
-          className="link rocketLink text-white flex mt-4  mx-2 items-center"
-          style={
-            {
-              "--underline-color": "#FF6347",
-              "--hover-color": "#FF6347",
-            } as React.CSSProperties
-          }
-          onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#FF6347";
-            e.currentTarget.style.setProperty("--underline-color", "#FF6347");
-          }}
-          onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#fff";
-            e.currentTarget.style.setProperty("--underline-color", "#FF6347");
-          }}
+          className="link rocketLink text-white flex mt-4 mx-2 items-center"
         >
           <span className="text-xl rocketIcon">🚀</span>
           <h5 className="font-semibold text-[1.1rem] ml-2">Explore</h5>
         </a>
 
+        {/* Connections */}
         <a
           onClick={() => navigate("/connections")}
           href="/connections"
-          className="link text-white flex mt-4  mx-2 items-center"
-          style={
-            {
-              "--underline-color": "#0ACEDC",
-              "--hover-color": "#0ACEDC",
-            } as React.CSSProperties
-          }
-          onMouseEnter={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#0ACEDC";
-            e.currentTarget.style.setProperty("--underline-color", "#0ACEDC");
-          }}
-          onMouseLeave={(e: React.MouseEvent<HTMLAnchorElement>) => {
-            e.currentTarget.style.color = "#fff";
-            e.currentTarget.style.setProperty("--underline-color", "#0ACEDC");
-          }}
+          className="link text-white flex mt-4 mx-2 items-center"
         >
           <MdPersonAdd size={22} className="connection-icon" />
           <h5 className="font-semibold text-[1.1rem] ml-2">Connection</h5>
         </a>
       </div>
 
-      <div className="flex absolute left-225 items-center bg-[#f0f2f5] p-2 rounded-full w-[400px] shadow-sm">
-        <FiSearch size={22} className="mr-3 text-gray-600" />
-        <input
-          type="search"
-          name="search"
-          placeholder="Search People, Posts, Topics  "
-          className="search-input border-none outline-none w-full bg-transparent text-base placeholder-gray-500"
-          style={{
-            WebkitBoxShadow: "0 0 0 30px #f0f2f5 inset",
-          }}
-        />
+      {/* Search */}
+      <div className="relative flex-1 ml-165 max-w-md">
+        <div className="flex items-center bg-[#f0f2f5] p-2 rounded-full shadow-sm">
+          <FiSearch size={22} className="mr-3 text-gray-600" />
+          <input
+            type="search"
+            value={searchQuery}
+            style={{ background: "#f0f2f5" }}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search People, Posts, Topics"
+            className="border-none outline-none bg-transparent w-full text-black placeholder-gray-500"
+          />
+        </div>
+
+        {/* Search Results */}
+        {searchQuery && (
+          <div className="absolute top-full left-0 w-full bg-white max-h-60 overflow-y-auto rounded-md shadow-lg mt-1 z-50">
+            {searchLoading ? (
+              <p className="p-2 text-gray-500">Loading...</p>
+            ) : searchResults.length === 0 ? (
+              <p className="p-2 text-gray-500">No users found</p>
+            ) : (
+              searchResults.map((user) => (
+                <div
+                  key={user._id}
+                  className="flex justify-between items-center p-2 hover:bg-gray-100 cursor-pointer"
+                  onClick={() => handleProfileClick(user)}
+                >
+                  <div className="flex items-center">
+                    <img
+                      src={user.profilePicture || defaultAvatar}
+                      alt={user.username}
+                      className="h-8 w-8 rounded-full object-cover mr-2"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold">{user.username}</p>
+                      {user.fullname && (
+                        <p className="text-xs text-gray-500">
+                          {user.fullname}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="text-white flex items-center cursor-pointer space-x-4 gap-2">
-        <div className="setting h-9 w-9 mr-6 mb-2">
-          <img src={settingImg} className="rounded-full ml-2 " alt="Setting" />
-          <span className="text-center text-[1rem]">Settings</span>
+      {/* User Info */}
+      <div className="text-white flex items-center space-x-4">
+        <div className="setting flex justify-between items-center flex-col h-9 w-9">
+          <img
+            src={settingImg}
+            className="rounded-full"
+            alt="Setting"
+            onClick={() => navigate("/settings")}
+          />
+          <h3>Settings</h3>
         </div>
-        <FiBell size={24} className="mr-5 cursor-pointer text-[#FFD700]" />
-
-        <div className="profileContainer flex flex-col items-center h-12 w-12 object-cover mr-2 mb-4">
+        <FiBell
+          size={24}
+          className="cursor-pointer text-[#FFD700]"
+          onClick={() => navigate("/notifications")}
+        />
+        <div className="profileContainer flex flex-col items-center">
           <div className="relative">
             {loading ? (
               <div className="h-12 w-12 rounded-full bg-gray-300 flex items-center justify-center text-gray-600">
-                Loading...
+                <Loader />
               </div>
             ) : (
               <img
                 className="h-12 w-12 rounded-full object-cover"
                 src={transformedUrl}
                 alt="profileIMG"
-                onError={(e: React.SyntheticEvent<HTMLImageElement>) => (e.currentTarget.src = defaultAvatar)}
+                onError={(e) => (e.currentTarget.src = defaultAvatar)}
               />
             )}
             <input
@@ -309,11 +347,13 @@ const Header: React.FC = () => {
               accept="image/*"
               onChange={handleImageUpload}
               className="absolute top-0 left-0 h-12 w-12 opacity-0 cursor-pointer"
-              title="Upload Profile Picture"
               disabled={loading}
+              title="Upload Profile Picture"
             />
           </div>
-          <h3 className="text-sm font-medium text-white">{username || "Loading..."}</h3>
+          <h3 className="text-sm font-medium">
+            {currentUsername || "Loading..."}
+          </h3>
         </div>
       </div>
     </div>

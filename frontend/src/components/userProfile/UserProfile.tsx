@@ -1,24 +1,29 @@
+// src/components/UserProfile.tsx
 import { useState, useEffect } from "react";
 import "./userProfile.css";
 import axiosClient from "../../api/axiosClient";
 import { useSelector, useDispatch } from "react-redux";
 import { setUsername, setProfilePicture } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import defaultAvatar from "../../../public/images/coverImage.png";
-import MoodMaker from "../MoodMaker/MoodMaker"; // Import the new component
+import MoodMaker from "../MoodMaker/MoodMaker";
 
 const UserProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { profilePicture, username } = useSelector(
+  const { profilePicture: currentProfilePicture, username: currentUsername } = useSelector(
     (state: RootState) => state.user
   );
+  const { userId } = useParams<{ userId?: string }>();
   const [fullname, setFullname] = useState("");
   const [error, setError] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [vibe, setVibe] = useState("");
   const [vibeDescription, setVibeDescription] = useState("");
   const [postsCount, setPostsCount] = useState(0);
+  const [followers, setFollowers] = useState(0);
+  const [following, setFollowing] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -30,24 +35,72 @@ const UserProfile: React.FC = () => {
           return;
         }
 
-        const response = await axiosClient.get("/api/users/profile");
-        setFullname(response.data.fullname || "");
-        if (response.data.username) dispatch(setUsername(response.data.username));
-        if (response.data.profilePicture)
-          dispatch(setProfilePicture(response.data.profilePicture));
-        setAboutMe(response.data.aboutMe || "");
-        setVibe(response.data.vibe || "");
-        setVibeDescription(response.data.vibeDescription || "");
-        setPostsCount(response.data.postsCount || 0);
+        const endpoint = userId ? `/api/users/${userId}` : "/api/users/profile";
+        const response = await axiosClient.get(endpoint, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = response.data;
+        setFullname(data.fullname || "");
+        if (data.username) dispatch(setUsername(data.username));
+        if (data.profilePicture) dispatch(setProfilePicture(data.profilePicture));
+        setAboutMe(data.aboutMe || "");
+        setVibe(data.vibe || "");
+        setVibeDescription(data.vibeDescription || "");
+        setPostsCount(data.postsCount || 0);
+        setFollowers(data.followers || 0);
+        setFollowing(data.following || 0);
+        setIsFollowing(data.isFollowing || false);
       } catch (err) {
         setError(`Some error fetching the data ${err}`);
       }
     };
     fetchUserProfile();
-  }, [dispatch]);
+  }, [userId, currentUsername, dispatch]);
 
   const handleEditProfile = () => {
-    navigate("/edit-userprofile");
+    if (!userId) {
+      navigate("/edit-userprofile");
+    }
+  };
+
+  const handleFollow = async () => {
+    if (userId) {
+      try {
+        const token = localStorage.getItem("accessToken");
+        await axiosClient.post(
+          `/api/users/${userId}/follow`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setIsFollowing(true);
+        setFollowers(followers + 1);
+      } catch (err) {
+        console.error("Follow error:", err);
+      }
+    }
+  };
+
+  const handleUnfollow = async () => {
+    if (userId) {
+      try {
+        const token = localStorage.getItem("accessToken");
+        await axiosClient.post(
+          `/api/users/${userId}/unfollow`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        setIsFollowing(false);
+        setFollowers(followers - 1);
+      } catch (err) {
+        console.error("Unfollow error:", err);
+      }
+    }
+  };
+
+  const handleMessage = () => {
+    if (userId) {
+      navigate(`/messages/${userId}`);
+    }
   };
 
   if (error) {
@@ -72,7 +125,7 @@ const UserProfile: React.FC = () => {
             <div className="absolute left-56 bottom-28 z-10">
               <div className="rounded-full ml-25 border-4 border-white shadow-xl bg-gradient-to-tr from-[#A084E8] to-[#611DD0] p-1">
                 <img
-                  src={profilePicture}
+                  src={currentProfilePicture || defaultAvatar}
                   alt="profilePic"
                   className="w-42 h-42 rounded-full object-cover bg-white"
                   onError={(e: React.SyntheticEvent<HTMLImageElement>) =>
@@ -82,21 +135,43 @@ const UserProfile: React.FC = () => {
               </div>
             </div>
 
-            {/* Profile Info and Edit Button */}
+            {/* Profile Info and Edit/Follow/Message Buttons */}
             <div className="flex flex-col md:flex-row items-center justify-between mt-25 px-8">
               <div className="flex flex-col items-start">
                 <h1 className="text-3xl font-bold text-[#611DD0] drop-shadow-sm">
                   {fullname}
                 </h1>
                 <p className="text-lg text-gray-500 font-medium mb-2">
-                  @{username}
+                  @{currentUsername}
                 </p>
-                <button
-                  onClick={handleEditProfile}
-                  className="mt-2 bg-gradient-to-r from-[#611DD0] to-[#A084E8] text-white rounded-full px-6 py-2 font-semibold shadow hover:scale-105 transition"
-                >
-                  Edit Profile
-                </button>
+                {!userId && (
+                  <button
+                    onClick={handleEditProfile}
+                    className="mt-2 bg-gradient-to-r from-[#611DD0] to-[#A084E8] text-white rounded-full px-6 py-2 font-semibold shadow hover:scale-105 transition"
+                  >
+                    Edit Profile
+                  </button>
+                )}
+                {userId && currentUsername !== currentUsername && ( // Show follow/unfollow/message for other users
+                  <>
+                    <button
+                      onClick={isFollowing ? handleUnfollow : handleFollow}
+                      className={`mt-2 px-4 py-2 rounded-full font-semibold shadow ${
+                        isFollowing
+                          ? "bg-red-500 text-white hover:bg-red-600"
+                          : "bg-green-500 text-white hover:bg-green-600"
+                      }`}
+                    >
+                      {isFollowing ? "Unfollow" : "Follow"}
+                    </button>
+                    <button
+                      onClick={handleMessage}
+                      className="mt-2 ml-2 bg-blue-500 text-white px-4 py-2 rounded-full font-semibold shadow hover:bg-blue-600"
+                    >
+                      Message
+                    </button>
+                  </>
+                )}
               </div>
               {/* Stats Card */}
               <div className="flex bg-white/70 backdrop-blur-md rounded-2xl shadow-lg px-10 py-6 gap-12 mt-6 md:mt-0">
@@ -106,12 +181,12 @@ const UserProfile: React.FC = () => {
                 </div>
                 <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
                 <div className="flex flex-col items-center">
-                  <h2 className="text-2xl font-bold text-[#611DD0]">5,217</h2>
+                  <h2 className="text-2xl font-bold text-[#611DD0]">{followers}</h2>
                   <p className="text-gray-600 font-medium">Followers</p>
                 </div>
                 <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
                 <div className="flex flex-col items-center">
-                  <h2 className="text-2xl font-bold text-[#611DD0]">50</h2>
+                  <h2 className="text-2xl font-bold text-[#611DD0]">{following}</h2>
                   <p className="text-gray-600 font-medium">Following</p>
                 </div>
               </div>
@@ -197,7 +272,7 @@ const UserProfile: React.FC = () => {
           </div>
           <div className="flex-1">
             <h3 className="text-[1.1rem] text-[#1438A6] font-semibold">
-              About Me(Bio)
+              About Me (Bio)
             </h3>
             <p className="text-gray-900">{aboutMe}</p>
           </div>
@@ -237,9 +312,11 @@ const UserProfile: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className="absolute left-250 top-10">
-        <MoodMaker />
-      </div>
+      {!userId && (
+        <div className="absolute left-250 top-10">
+          <MoodMaker />
+        </div>
+      )}
     </div>
   );
 };

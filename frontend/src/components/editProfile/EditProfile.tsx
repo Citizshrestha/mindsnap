@@ -177,7 +177,7 @@ const EditProfile: React.FC = () => {
 
   return (
     <div
-      className="min-h-screen overflow-y-scroll mt-19 w-[100%] ml-18 px-6 py-10 font-sans hide-scrollbar"
+      className=" overflow-y-auto h-[calc(100vh-80px)] scrollbar-hide  mt-19 w-[100%] ml-18 px-6 py-10  "
       style={{
         scrollbarWidth: "none",
         msOverflowStyle: "none",
@@ -227,7 +227,7 @@ const EditProfile: React.FC = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block font-semibold">Full Name</label>
+            <label className="block text-black font-semibold">Full Name</label>
             <input
               style={{ background: "#fff", color: "#111" }}
               className="w-full border border-gray-800 rounded px-3 py-2"
@@ -236,7 +236,7 @@ const EditProfile: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block font-semibold">Username</label>
+            <label className="block text-black font-semibold">Username</label>
             <input
               style={{ background: "#fff", color: "#111" }}
               className="w-full border border-gray-800 rounded px-3 py-2"
@@ -245,9 +245,9 @@ const EditProfile: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block font-semibold">Gender</label>
+            <label className="block text-black font-semibold">Gender</label>
             <select
-              className="w-full border border-gray-800 rounded px-3 py-2"
+              className="w-full border text-black border-gray-800 rounded px-3 py-2"
               value={genderState}
               onChange={(e) => setGenderState(e.target.value)}
             >
@@ -258,7 +258,7 @@ const EditProfile: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className="block font-semibold">Date of Birth</label>
+            <label className="block text-black font-semibold">Date of Birth</label>
             <input
               type="date"
               style={{ background: "#fff", color: "#111" }}
@@ -270,7 +270,7 @@ const EditProfile: React.FC = () => {
         </div>
 
         <div className="mt-6">
-          <label className="block font-semibold">Vibe:</label>
+          <label className="block text-black font-semibold">Vibe:</label>
           <input
             style={{ background: "#fff", color: "#111" }}
             className="w-full border border-gray-800 rounded px-3 py-2"
@@ -281,7 +281,7 @@ const EditProfile: React.FC = () => {
         </div>
 
         <div className="mt-4">
-          <label className="block font-semibold">Vibe Description</label>
+          <label className="block text-black font-semibold">Vibe Description</label>
           <input
             style={{ background: "#fff", color: "#111" }}
             className="w-full border border-gray-800 rounded px-3 py-2"
@@ -292,7 +292,7 @@ const EditProfile: React.FC = () => {
         </div>
 
         <div className="mt-4">
-          <label className="block font-semibold">About Me:</label>
+          <label className="block text-black font-semibold">About Me:</label>
           <textarea
             style={{ color: "#111" }}
             className="w-full border border-gray-800 rounded px-3 py-2"

@@ -252,9 +252,9 @@ const EditProfile: React.FC = () => {
               onChange={(e) => setGenderState(e.target.value)}
             >
               <option value="">Select</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Others">Others</option>
+              <option value="male">male</option>
+              <option value="female">female</option>
+              <option value="others">others</option>
             </select>
           </div>
           <div>

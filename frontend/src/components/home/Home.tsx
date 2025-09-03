@@ -1,8 +1,7 @@
-import { useDispatch, useSelector } from "react-redux";
+import { useEffect, useState, useRef } from "react";
 import Header from "../header/Header";
 import MoodMaker from "../MoodMaker/MoodMaker";
 import Sidebar from "../sidebar/Sidebar";
-import { useEffect, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import MaleAvatar from "../../../public/images/Male Avatar.png";
 import FemaleAvatar from "../../../public/images/Female Avatar.webp";
@@ -20,6 +19,7 @@ import type { RootState } from "../../redux/store";
 import { postsData, type Post } from "../../data/postFeed";
 import { FaRegCommentDots, FaShare } from "react-icons/fa";
 import { BiSolidLike } from "react-icons/bi";
+import { useDispatch, useSelector} from "react-redux";
 
 const Home = () => {
   const dispatch = useDispatch();
@@ -27,72 +27,50 @@ const Home = () => {
   const [posts, setPosts] = useState<Post[]>(postsData);
   const [showPostOptions, setShowPostOptions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<File | null>(null); // To store selected file
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Function to get avatar based on gender
   const getAvatarByGender = (gender: string) => {
-     if (gender?.toLocaleLowerCase() === 'male'){
-       return MaleAvatar;
-     } else if (gender?.toLocaleLowerCase() === 'female'){
-      return FemaleAvatar;
-     } else {
-      return DefaultAvatar;
-     }
+    if (gender?.toLowerCase() === "male") return MaleAvatar;
+    else if (gender?.toLowerCase() === "female") return FemaleAvatar;
+    else return DefaultAvatar;
   };
 
-  // Function to format time without seconds
   const formatTime = () => {
-    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   useEffect(() => {
     const fetchProfile = async () => {
       try {
         const res = await axiosClient.get("/api/users/profile", {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
+          headers: { Authorization: `Bearer ${localStorage.getItem("accessToken")}` },
         });
         const data = res.data || {};
-        
-        // Get the appropriate avatar based on gender
         const genderAvatar = getAvatarByGender(data.gender);
-        
-        // Update user data in Redux
         dispatch(setProfilePicture(data.profilePicture || genderAvatar));
         dispatch(setFullName(data.fullname || "Current User"));
         dispatch(setUsername(data.username || "@currentUser"));
         dispatch(setGender(data.gender || ""));
-
-        console.log("User gender from API:", data.gender);
-        console.log("Selected avatar:", genderAvatar);
-
       } catch (err: unknown) {
         const errorObj = err as { message?: string; res?: { status?: number; data?: unknown } };
-        console.error("Fetch Profile error: ", {
-          message: errorObj?.message,
-          status: errorObj?.res?.status,
-          data: errorObj?.res?.data,
-        });
+        console.error("Fetch Profile error: ", { message: errorObj?.message, status: errorObj?.res?.status, data: errorObj?.res?.data });
         toast.error("Failed to load profile data");
       }
     };
     fetchProfile();
   }, [dispatch]);
 
-  // Handle clicks outside the emoji picker to close it
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
         setShowEmojiPicker(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   interface Emoji {
@@ -111,24 +89,44 @@ const Home = () => {
     }
   };
 
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedMedia(file);
+      toast.success(`Selected ${file.name}`);
+    }
+  };
+
   const handlePostSubmit = () => {
     if (textareaRef.current && textareaRef.current.value.trim()) {
+      let media = null;
+      if (selectedMedia) {
+        const mediaType = selectedMedia.type.split("/")[0]; // e.g., "image", "video", "audio"
+        media = {
+          type: mediaType as "image" | "video" | "audio" | "file",
+          url: URL.createObjectURL(selectedMedia), 
+          name: selectedMedia.name,
+        };
+      }
+
       const newPost: Post = {
         id: posts.length + 1,
         name: fullname || "Current User",
         username: username ? `@${username}` : "@CurrentUser",
-        time: formatTime(), // Use formatted time without seconds
+        time: formatTime(),
         caption: textareaRef.current.value,
         likes: 0,
         comments: 0,
         shares: 0,
         profilePicture: profilePicture || getAvatarByGender(gender),
-        image: null,
+        media,
       };
       setPosts((prevPosts) => [newPost, ...prevPosts]);
       textareaRef.current.value = "";
+      setSelectedMedia(null);
       setShowPostOptions(false);
       setShowEmojiPicker(false);
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
       toast.success("Post created successfully!");
     } else {
       toast.error("Please enter a caption!");
@@ -137,24 +135,16 @@ const Home = () => {
 
   const toggleEmojiPicker = () => {
     setShowEmojiPicker(!showEmojiPicker);
-    if (!showEmojiPicker && textareaRef.current) {
-      setTimeout(() => textareaRef.current?.focus(), 0);
-    }
+    if (!showEmojiPicker && textareaRef.current) setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
   return (
     <div className="flex h-screen">
-      {/* Sidebar */}
       <Sidebar />
-
       <Header />
-
-      {/* Main Content */}
       <div className="flex-1 w-[950px] relative flex flex-col min-h-screen">
         <div className="flex h-[calc(100vh-80px)] overflow-y-auto scrollbar-hide items-start justify-between w-full px-6 py-6 ml-[6rem] mt-[5rem]">
-          {/* Feed Area */}
           <div className="flex-1 max-w-3xl">
-            {/* Create Post */}
             <div className="bg-white flex flex-col shadow-md rounded-2xl p-2 mt-4 mb-2 relative">
               <div className="flex items-center justify-center gap-3 mt-2">
                 <img
@@ -174,7 +164,19 @@ const Home = () => {
               {showPostOptions && (
                 <div className="flex items-center justify-between mt-2 p-2">
                   <div className="flex gap-4 text-purple-600">
-                    <span className="text-2xl cursor-pointer hover:scale-110 transition-transform">📷</span>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      className="hidden"
+                    />
+                    <span
+                      className="text-2xl cursor-pointer hover:scale-110 transition-transform"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      📤
+                    </span>
                     <span
                       className="text-2xl cursor-pointer hover:scale-110 transition-transform"
                       onClick={toggleEmojiPicker}
@@ -191,28 +193,14 @@ const Home = () => {
                 </div>
               )}
               {showEmojiPicker && (
-                <div 
-                  ref={emojiPickerRef}
-                  className="absolute top-10 bottom-16 left-16 z-10"
-                >
-                  <Picker 
-                    data={data} 
-                    onEmojiSelect={handleEmojiSelect} 
-                    theme="light"
-                    previewPosition="none"
-                    skinTonePosition="none"
-                  />
+                <div ref={emojiPickerRef} className="absolute top-10 bottom-16 left-16 z-10">
+                  <Picker data={data} onEmojiSelect={handleEmojiSelect} theme="light" previewPosition="none" skinTonePosition="none" />
                 </div>
               )}
             </div>
-
-            {/* Posts Feed */}
             <div className="flex flex-col gap-4">
               {posts.map((post) => (
-                <div
-                  key={post.id}
-                  className="bg-white shadow-md rounded-2xl p-4"
-                >
+                <div key={post.id} className="bg-white shadow-md rounded-2xl p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <img
@@ -223,10 +211,7 @@ const Home = () => {
                       />
                       <div>
                         <h3 className="font-semibold text-gray-800">
-                          {post.name}{" "}
-                          <span className="text-gray-600 font-normal">
-                            {post.username}
-                          </span>
+                          {post.name} <span className="text-gray-600 font-normal">{post.username}</span>
                         </h3>
                         <p className="text-sm text-gray-500">{post.time}</p>
                       </div>
@@ -234,12 +219,37 @@ const Home = () => {
                     <button className="text-gray-700">•••</button>
                   </div>
                   <p className="mt-3 text-gray-800 text-xl break-words">{post.caption}</p>
-                  {post.image && (
-                    <img
-                      src={post.image}
-                      alt="post"
-                      className="rounded-xl h-[400px] mt-3 w-full object-cover"
-                    />
+                  {post.media && (
+                    <div className="mt-3">
+                      {post.media.type === "image" && (
+                        <img
+                          src={post.media.url}
+                          alt="post media"
+                          className="rounded-xl h-[400px] w-full object-cover"
+                        />
+                      )}
+                      {post.media.type === "video" && (
+                        <video controls className="rounded-xl h-[400px] w-full object-cover">
+                          <source src={post.media.url} type="video/mp4" />
+                          Your browser does not support the video tag.
+                        </video>
+                      )}
+                      {post.media.type === "audio" && (
+                        <audio controls className="w-full">
+                          <source src={post.media.url} type="audio/mpeg" />
+                          Your browser does not support the audio element.
+                        </audio>
+                      )}
+                      {post.media.type === "file" && (
+                        <a
+                          href={post.media.url}
+                          download={post.media.name}
+                          className="text-blue-500 underline"
+                        >
+                          Download {post.media.name}
+                        </a>
+                      )}
+                    </div>
                   )}
                   <div className="flex justify-between text-gray-800 mt-6 text-sm">
                     <span className="flex ml-10 items-center gap-2">
@@ -258,8 +268,6 @@ const Home = () => {
           </div>
         </div>
       </div>
-
-      {/* MoodMaker Area */}
       <div className="w-1/4 moodMaker sticky top-[7rem] right-10 self-start ml-16">
         <MoodMaker />
       </div>

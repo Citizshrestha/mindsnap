@@ -8,7 +8,11 @@ export interface Post {
   comments: number;
   shares: number;
   profilePicture: string;
-  image: string | null;
+  media: {
+    type: "image" | "video" | "audio" | "file";
+    url: string; 
+    name?: string; 
+  } | null;
 }
 
 export const postsData: Post[] = [
@@ -22,7 +26,10 @@ export const postsData: Post[] = [
     comments: 4,
     shares: 2,
     profilePicture: "https://randomuser.me/api/portraits/men/32.jpg",
-    image: "https://media.istockphoto.com/id/1408255024/photo/developers-discussing-programming-code.webp?a=1&b=1&s=612x612&w=0&k=20&c=vEuZdJuxeL-pPzUWtZpxa1nVxbGOEGdVTm7qvKfhyfg=", 
+    media: {
+      type: "video",
+      url: "https://www.pexels.com/download/video/6804109/",
+    },
   },
   {
     id: 2,
@@ -34,19 +41,25 @@ export const postsData: Post[] = [
     comments: 11,
     shares: 5,
     profilePicture: "https://randomuser.me/api/portraits/women/65.jpg",
-    image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&auto=format&fit=crop&q=80", 
+    media: {
+      type: "image",
+      url: "https://images.unsplash.com/photo-1505203723186-fdcd69a5aacb?w=1000&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTB8fHlvc2VtaXRlJTIwbmF0aW9uYWwlMjBwYXJrfGVufDB8fDB8fHww", 
+    },
   },
   {
     id: 3,
     name: "Liam Carter",
     username: "@liamcarter",
     time: "12 min ago",
-    caption: "City lights never fail to inspire me ✨🌃 Urban vibes are everything! 🏙️💫 #CityLife",
+    caption: "Vibing on this sound ✨🌃  vibes are everything! 🏙️💫 #Vibe",
     likes: 27,
     comments: 8,
     shares: 3,
     profilePicture: "https://randomuser.me/api/portraits/men/45.jpg",
-    image: "https://images.unsplash.com/photo-1519996529931-28324d5a630e?w=800&auto=format&fit=crop&q=80", 
+    media: {
+      type: "audio",
+      url: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", 
+    },
   },
   {
     id: 4,
@@ -58,7 +71,11 @@ export const postsData: Post[] = [
     comments: 15,
     shares: 7,
     profilePicture: "https://randomuser.me/api/portraits/women/44.jpg",
-    image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&auto=format&fit=crop&q=80", 
+    media: {
+      type: "file",
+      url: "https://example.com/sample.pdf", 
+      name: "sample.pdf",
+    },
   },
   {
     id: 5,
@@ -70,66 +87,6 @@ export const postsData: Post[] = [
     comments: 10,
     shares: 4,
     profilePicture: "https://randomuser.me/api/portraits/men/77.jpg",
-    image: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=800&auto=format&fit=crop&q=80", 
+    media: null,
   },
-  {
-    id: 6,
-    name: "Ava Thompson",
-    username: "@avathompson",
-    time: "45 min ago",
-    caption: "Enjoying the sunset vibes 🌅✨ Golden hour magic! 🌇🔥 #SunsetLover",
-    likes: 62,
-    comments: 18,
-    shares: 9,
-    profilePicture: "https://randomuser.me/api/portraits/women/22.jpg",
-    image: "https://images.unsplash.com/photo-1518837695005-2083093ee35b?w=800&auto=format&fit=crop&q=80", 
-  },
-  {
-    id: 7,
-    name: "Noah Lee",
-    username: "@noahlee",
-    time: "1 hour ago",
-    caption: "Coding all night, achieving new heights! 💻🚀 Bug fixed! 🎯🔥 #CodeLife",
-    likes: 19,
-    comments: 5,
-    shares: 2,
-    profilePicture: "https://randomuser.me/api/portraits/men/88.jpg",
-    image: null, 
-  },
-  {
-    id: 8,
-    name: "Mia Rodriguez",
-    username: "@miarodriguez",
-    time: "1.5 hours ago",
-    caption: "Beach days are the best days 🏖️🌊 Sun, sand, and serenity! ☀️🐚 #BeachLife",
-    likes: 78,
-    comments: 22,
-    shares: 12,
-    profilePicture: "https://randomuser.me/api/portraits/women/33.jpg",
-    image: "https://images.unsplash.com/photo-1506953823976-52e1fdc0149a?w=800&auto=format&fit=crop&q=80", 
-  },
-  {
-    id: 9,
-    name: "Ethan Patel",
-    username: "@ethanpatel",
-    time: "2 hours ago",
-    caption: "Exploring the mountains 🏞️⛰️ Fresh air and amazing views! 🌄❤️ #AdventureAwaits",
-    likes: 45,
-    comments: 13,
-    shares: 6,
-    profilePicture: "https://randomuser.me/api/portraits/men/66.jpg",
-    image: null, 
-  },
-  {
-    id: 10,
-    name: "Isabella Nguyen",
-    username: "@isabellanguyen",
-    time: "2.5 hours ago",
-    caption: "Coffee and code, perfect combo ☕💻 Productivity level: 100%! 🚀✨ #DeveloperLife",
-    likes: 29,
-    comments: 7,
-    shares: 3,
-    profilePicture: "https://randomuser.me/api/portraits/women/55.jpg",
-    image: "https://images.unsplash.com/photo-1447933601403-0c6688de566e?w=800&auto=format&fit=crop&q=80",  
-  }
 ];

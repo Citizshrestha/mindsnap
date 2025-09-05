@@ -1,15 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { RiMore2Fill } from "react-icons/ri";
+import { useSelector } from "react-redux";
 import defaultAvatar from "../../../public/images/default.jpg";
 import SearchModal from "./SearchModal";
-
-type Chat = {
-  id: string;
-  name: string;
-  lastMessage: string;
-  time?: string;
-  image?: string;
-};
+import type { Chat } from "./Message";
+import type { RootState } from "../../redux/store";
 
 interface ChatListProps {
   chats: Chat[];
@@ -19,28 +14,36 @@ interface ChatListProps {
 
 const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onSelectChat }) => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Fetch user data from Redux
+  const { profilePicture, username, fullname } = useSelector((state: RootState) => state.user);
 
   const startChat = (user: { id: number; full_name: string; username: string; image?: string }) => {
     console.log("Starting chat with:", user);
   };
 
-  const handleSearchClick = () => {
-    setIsSearchOpen(true); // Open the search modal
-  };
+  const handleSearchClick = () => setIsSearchOpen(true);
+
+  // Scroll to the last chat when chats update
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [chats]);
 
   return (
     <section className="relative hidden lg:flex flex-col bg-[#611DD0] text-white h-screen w-full md:w-[350px] border-r border-purple-300/30 rounded-l-2xl">
-      {/* Header with profile + more button */}
       <header className="flex items-center justify-between w-full p-4 sticky top-0 z-10 border-b border-purple-200/30">
         <main className="flex items-center gap-3">
           <img
-            src={defaultAvatar}
-            alt="User profile"
+            src={profilePicture || defaultAvatar}
+            alt={`${fullname || username} profile`}
             className="w-11 h-11 rounded-full object-cover cursor-pointer"
           />
           <span>
-            <h3 className="p-0 font-semibold md:text-[16px]">Current User</h3>
-            <p className="p-0 font-light text-[14px]">@username</p>
+            <h3 className="p-0 font-semibold md:text-[16px]">{fullname || username || "Current User"}</h3>
+            <p className="p-0 font-light text-[14px]">{username ? `@${username}` : "@username"}</p>
           </span>
         </main>
         <button
@@ -51,7 +54,6 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onSelectChat }
         </button>
       </header>
 
-      {/* Search + heading */}
       <div className="w-full mt-3 px-4">
         <header className="flex items-center justify-between">
           <h3 className="text-[16px] font-medium">Messages ({chats.length})</h3>
@@ -64,8 +66,10 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onSelectChat }
         </header>
       </div>
 
-      {/* Chat list */}
-      <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-purple-500/50 scrollbar-track-transparent mt-2">
+      <main
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto h-[calc(100vh-80px)] mt-2 scrollbar-hide"
+      >
         {chats.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full p-4 text-center">
             <p>No chats yet</p>
@@ -81,7 +85,7 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onSelectChat }
                 chat.id === activeChatId ? "bg-purple-500/60" : "hover:bg-purple-500/40"
               }`}
               onClick={() => onSelectChat(chat.id)}
-              style={{ minHeight: "60px" }} // Consistent height for alignment
+              style={{ minHeight: "60px" }}
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <img
@@ -95,14 +99,13 @@ const ChatList: React.FC<ChatListProps> = ({ chats, activeChatId, onSelectChat }
                 </div>
               </div>
               {chat.time && (
-                <p className="text-xs opacity-80 ml-2 whitespace-nowrap">{chat.time}</p>
+                <p className="text-xs opacity-80 ml-2 whitespace-nowrap">{new Date(chat.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
               )}
             </div>
           ))
         )}
       </main>
 
-      {/* Search Modal */}
       {isSearchOpen && (
         <SearchModal
           startChat={startChat}

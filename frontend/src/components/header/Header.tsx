@@ -1,7 +1,6 @@
-// src/components/Header.tsx
 import { FiBell, FiHome, FiSearch } from "react-icons/fi";
 import { MdPerson3, MdPersonAdd } from "react-icons/md";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { toast } from "react-toastify";
@@ -15,7 +14,6 @@ import settingImg from "../../../public/images/settings.png";
 import defaultAvatar from "../../../public/images/default.jpg";
 
 import "./header.css";
-import Loader from "../Loader";
 
 interface CloudinaryUploadResponse {
   secure_url: string;
@@ -48,6 +46,7 @@ interface SearchUser {
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation(); // Track current route
   const dispatch = useDispatch<AppDispatch>();
   const { profilePicture, username: currentUsername } = useSelector(
     (state: RootState) => state.user
@@ -58,6 +57,7 @@ const Header: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [activeLink, setActiveLink] = useState<string | null>(null); // Track active link
 
   // Fetch user profile if not already in Redux
   useEffect(() => {
@@ -191,6 +191,16 @@ const Header: React.FC = () => {
     }
   };
 
+  // Set active link based on current route
+  useEffect(() => {
+    const path = location.pathname;
+    if (path === "/home") setActiveLink("/home");
+    else if (path === "/profile") setActiveLink("/profile");
+    else if (path === "/explore") setActiveLink("/explore");
+    else if (path === "/connections") setActiveLink("/connections");
+    else setActiveLink(null);
+  }, [location.pathname]);
+
   if (error) {
     return (
       <div className="fixed bg-[#611DD0] top-0 left-0 w-full h-20 flex items-center justify-center text-white z-50">
@@ -212,7 +222,7 @@ const Header: React.FC = () => {
         <img
           src={logoImg}
           alt="SnapMind Logo"
-          className="w-16 h-16 pb-2 pl-5 object-cover rounded-full"
+          className="w-20 h-20 pb-2 pl-5 object-cover rounded-full"
         />
         <h1 className="text-white text-3xl font-bold flex items-center">
           Mind<span className="text-yellow-300">Snap</span>
@@ -220,15 +230,49 @@ const Header: React.FC = () => {
       </div>
 
       {/* Navigation */}
-      <div className="navlinks flex items-center justify-between absolute left-80">
+      <div className="Nav_Link flex items-center justify-between absolute left-80">
         {/* Home */}
         <a
           onClick={() => navigate("/home")}
           className="link text-white flex mt-4 mx-2 items-center"
           href="/home"
+          style={
+            {
+              "--underline-color": "#FFF0F5",
+              "--hover-color": "#FFF0F5",
+            } as React.CSSProperties
+          }
         >
-          <FiHome size={20} className="home-icon" />
-          <h5 className="font-semibold text-[1.1rem] ml-2">Home</h5>
+          <FiHome
+            size={20}
+            className="home-icon"
+            style={{
+              color: activeLink === "/home" ? "#FFF0F5" : "#00FFFF",
+            }}
+          />
+          <h5
+            className="font-semibold text-[1.1rem] ml-2"
+            style={{
+              color: activeLink === "/home" ? "#FFF0F5" : "#fff",
+            }}
+          >
+            Home
+          </h5>
+          {activeLink === "/home" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#FFF0F5",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </a>
 
         {/* Profile */}
@@ -236,9 +280,43 @@ const Header: React.FC = () => {
           onClick={() => navigate("/profile")}
           href="/profile"
           className="link text-white flex mt-4 mx-2 items-center"
+          style={
+            {
+              "--underline-color": "#F9A8D4",
+              "--hover-color": "#F9A8D4",
+            } as React.CSSProperties
+          }
         >
-          <MdPerson3 size={22} className="profile-icon" />
-          <h5 className="font-semibold text-[1.1rem] ml-2">Profile</h5>
+          <MdPerson3
+            size={22}
+            className="profile-icon"
+            style={{
+              color: activeLink === "/profile" ? "#FF00FF" : "#FF00FF",
+            }}
+          />
+          <h5
+            className="font-semibold text-white text-[1.1rem] ml-2"
+            style={{
+              color: activeLink === "/profile" ? "#F9A8D4" : "#fff",
+            }}
+          >
+            Profile
+          </h5>
+          {activeLink === "/profile" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#F9A8D4",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </a>
 
         {/* Explore */}
@@ -246,9 +324,44 @@ const Header: React.FC = () => {
           onClick={() => navigate("/explore")}
           href="/explore"
           className="link rocketLink text-white flex mt-4 mx-2 items-center"
+          style={
+            {
+              "--underline-color": "#FF6347",
+              "--hover-color": "#FF6347",
+            } as React.CSSProperties
+          }
         >
-          <span className="text-xl rocketIcon">🚀</span>
-          <h5 className="font-semibold text-[1.1rem] ml-2">Explore</h5>
+          <span
+            className="text-xl rocketIcon"
+            style={{
+              color: activeLink === "/explore" ? "#FF6347" : "#fff",
+            }}
+          >
+            🚀
+          </span>
+          <h5
+            className="font-semibold text-[1.1rem] ml-2"
+            style={{
+              color: activeLink === "/explore" ? "#FF6347" : "#fff",
+            }}
+          >
+            Explore
+          </h5>
+          {activeLink === "/explore" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#FF6347",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </a>
 
         {/* Connections */}
@@ -256,9 +369,43 @@ const Header: React.FC = () => {
           onClick={() => navigate("/connections")}
           href="/connections"
           className="link text-white flex mt-4 mx-2 items-center"
+          style={
+            {
+              "--underline-color": "#0ACEDC",
+              "--hover-color": "#0ACEDC",
+            } as React.CSSProperties
+          }
         >
-          <MdPersonAdd size={22} className="connection-icon" />
-          <h5 className="font-semibold text-[1.1rem] ml-2">Connection</h5>
+          <MdPersonAdd
+            size={22}
+            className="connection-icon"
+            style={{
+              color: activeLink === "/connections" ? "#0ACEDC" : "#0ACEDC",
+            }}
+          />
+          <h5
+            className="font-semibold text-[1.1rem] ml-2"
+            style={{
+              color: activeLink === "/connections" ? "#0ACEDC" : "#fff",
+            }}
+          >
+            Connection
+          </h5>
+          {activeLink === "/connections" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#0ACEDC",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </a>
       </div>
 
@@ -297,10 +444,10 @@ const Header: React.FC = () => {
                       className="h-8 w-8 rounded-full object-cover mr-2"
                     />
                     <div>
-                      <p className="text-sm font-semibold">{user.username}</p>
+                      <p className="text-sm text-gray-800 font-stretch-normal">{user.fullname}</p>
                       {user.fullname && (
-                        <p className="text-xs text-gray-500">
-                          {user.fullname}
+                        <p className="text-xs text-gray-600">
+                          {user.username}
                         </p>
                       )}
                     </div>
@@ -332,7 +479,7 @@ const Header: React.FC = () => {
           <div className="relative">
             {loading ? (
               <div className="h-12 w-12 rounded-full bg-gray-300 flex items-center justify-center text-gray-600">
-                <Loader />
+                Loading...
               </div>
             ) : (
               <img

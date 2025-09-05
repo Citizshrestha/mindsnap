@@ -138,12 +138,12 @@ const UserProfile: React.FC = () => {
             {/* Profile Info and Edit/Follow/Message Buttons */}
             <div className="flex flex-col md:flex-row items-center justify-between mt-25 px-8">
               <div className="flex flex-col items-start">
-                <h1 className="text-3xl font-bold text-[#611DD0] drop-shadow-sm">
+                <h2 className="text-3xl font-bold text-[#611DD0] drop-shadow-sm">
                   {fullname}
-                </h1>
-                <p className="text-lg text-gray-500 font-medium mb-2">
+                </h2>
+                <h3 className="text-lg text-gray-500 font-medium mb-2">
                   @{currentUsername}
-                </p>
+                </h3>
                 {!userId && (
                   <button
                     onClick={handleEditProfile}
@@ -264,7 +264,7 @@ const UserProfile: React.FC = () => {
               What Your Vibe Says About You
             </h3>
             <p className="text-gray-900">{vibeDescription}</p>
-            <button className="mt-2 font-['montserrat'] bg-[#582BBB] text-white px-4 py-2 rounded-full">
+            <button className="mt-2 font-['Nunito'] bg-[#582BBB] text-white px-4 py-2 rounded-full">
               <i>
                 <b>{vibe}</b>
               </i>
@@ -280,7 +280,7 @@ const UserProfile: React.FC = () => {
 
         <div className="mb-6">
           <div className="flex justify-between mb-2">
-            <h3 className="text-xl font-semibold">333 Vibes ✨</h3>
+            <h3 className="text-xl text-black font-bold">{postsCount} Vibes ✨</h3>
             <h3 className="text-xl font-semibold">Highlighted</h3>
           </div>
           <div className="grid grid-cols-2 gap-4">

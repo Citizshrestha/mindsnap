@@ -15,6 +15,7 @@ import { ToastContainer, Slide } from "react-toastify";
 import EditProfile from "./components/editProfile/EditProfile";
 import ErrorBoundary from "./components/errorBoundary/ErrorBoundary";
 import Message from "./components/message/Message";
+import Explore from "./components/explore/Explore"; 
 
 const App: React.FC = () => {
   return (
@@ -33,7 +34,8 @@ const App: React.FC = () => {
             <Route path="/home" element={<Home />} />
             <Route path="/profile" element={<UserProfile />} />
             <Route path="/edit-userprofile" element={<EditProfile />} />
-            <Route path="/messages" element={<Message/>}/>
+            <Route path="/messages" element={<Message />} />
+            <Route path="/explore" element={<Explore />} /> {/* Add Explore route */}
           </Route>
         </Routes>
         <ToastContainer

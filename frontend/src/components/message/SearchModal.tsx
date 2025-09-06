@@ -1,10 +1,11 @@
-// src/components/message/SearchModal.tsx (unchanged)
-import { useState } from "react";
+// src/components/message/SearchModal.tsx
+import { useState, useEffect } from "react";
 import { FaSearch, FaTimes } from "react-icons/fa";
 import defaultAvatar from "../../../public/images/default.jpg";
+import { messageSample } from "../../data/messageSample";
 
 interface User {
-  id: number;
+  id: string;
   full_name: string;
   username: string;
   image?: string;
@@ -15,15 +16,26 @@ interface SearchModalProps {
   onClose: () => void;
 }
 
-const mockUsers: User[] = [
-  { id: 1, full_name: "Alice Johnson", username: "alice", image: "" },
-  { id: 2, full_name: "Bob Smith", username: "bob", image: "" },
-  { id: 3, full_name: "Charlie Lee", username: "charlie", image: "" },
-];
-
 const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+
+  // Extract unique users from messageSample
+  useEffect(() => {
+    const usersMap: { [key: string]: User } = {};
+    messageSample.forEach((msg) => {
+      if (!usersMap[msg.chatUser]) {
+        usersMap[msg.chatUser] = {
+          id: msg.sender._id,
+          full_name: msg.chatUser,
+          username: msg.chatUser.replace(/\s/g, "").toLowerCase(),
+          image: `https://i.pravatar.cc/40?u=${msg.chatUser.replace(/\s/g, "")}`,
+        };
+      }
+    });
+    setAllUsers(Object.values(usersMap));
+  }, []);
 
   const handleSearch = () => {
     if (!searchTerm.trim()) {
@@ -31,7 +43,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
       return;
     }
 
-    const results = mockUsers.filter(
+    const results = allUsers.filter(
       (user) =>
         user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.full_name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -67,9 +79,12 @@ const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 type="text"
-                style={{backgroundColor: "#fff", color: "#111"}}
+                style={{ backgroundColor: "#fff", color: "#111" }}
                 className="bg-white border border-gray-300 text-gray-900 text-sm rounded-lg outline-none w-full p-2.5"
                 placeholder="Search users"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSearch();
+                }}
               />
               <button
                 onClick={handleSearch}

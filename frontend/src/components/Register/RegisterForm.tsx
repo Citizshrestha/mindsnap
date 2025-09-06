@@ -51,70 +51,65 @@ const RegisterForm = () => {
     setError(null);
   };
 
-const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setIsLoading(true);
-  setError(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
-  try {
-    if (
-      !formData.fullName ||
-      !formData.username ||
-      !formData.email ||
-      !formData.password
-    ) {
-      throw new Error("Please fill in all fields");
-    }
-
-    if (formData.password.length < 6) {
-      throw new Error("Password must be at least 6 characters long");
-    }
-
-    // Check if email already exists BEFORE registering
-    const existsResponse = await checkUserExists(formData.email);
-    if (!existsResponse.success) {
-      throw new Error(existsResponse.message || "Failed to verify email");
-    }
-    if (existsResponse.exists) {
-      throw new Error("This email is already registered. Please log in.");
-    }
-
-    // If email does not exist, proceed with registration API call
-    const response = await register(
-      formData.fullName,
-      formData.username,
-      formData.email,
-      formData.password
-    );
-
-    localStorage.setItem("accessToken", response.token);
-    localStorage.setItem("userId", response._id);
-    toast.success("Sign Up successful! You can log in now.");
-    navigate("/");
-
-  } catch (err: unknown) {
-    let errorMessage = "An unexpected error occurred. Please try again.";
-
-    if (axios.isAxiosError(err)) {
-      if (err.response) {
-        errorMessage =
-          err.response.data?.message ||
-          "Sign Up failed. Please try again later.";
-      } else if (err.request) {
-        errorMessage =
-          "Network Error: Unable to reach the server. Please check your connection.";
+    try {
+      if (
+        !formData.fullName ||
+        !formData.username ||
+        !formData.email ||
+        !formData.password
+      ) {
+        throw new Error("Please fill in all fields");
       }
-    } else if (err instanceof Error) {
-      errorMessage = err.message;
+
+      if (formData.password.length < 6) {
+        throw new Error("Password must be at least 6 characters long");
+      }
+
+      const existsResponse = await checkUserExists(formData.email);
+      if (!existsResponse.success) {
+        throw new Error(existsResponse.message || "Failed to verify email");
+      }
+      if (existsResponse.exists) {
+        throw new Error("This email is already registered. Please log in.");
+      }
+
+      const response = await register(
+        formData.fullName,
+        formData.username,
+        formData.email,
+        formData.password
+      );
+
+      localStorage.setItem("accessToken", response.token);
+      localStorage.setItem("userId", response._id);
+      toast.success("Sign Up successful! You can log in now.");
+      navigate("/");
+    } catch (err: unknown) {
+      let errorMessage = "An unexpected error occurred. Please try again.";
+      if (axios.isAxiosError(err)) {
+        if (err.response) {
+          errorMessage =
+            err.response.data?.message ||
+            "Sign Up failed. Please try again later.";
+        } else if (err.request) {
+          errorMessage =
+            "Network Error: Unable to reach the server. Please check your connection.";
+        }
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      toast.error(errorMessage);
+      console.error("Sign Up Error:", err);
+    } finally {
+      setIsLoading(false);
     }
-
-    console.error("Sign Up Error:", err);
-    setError(errorMessage);
-  } finally {
-    setIsLoading(false);
-  }
-};
-
+  };
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
@@ -124,66 +119,75 @@ const handleSubmit = async (e: React.FormEvent) => {
     navigate("/");
   };
 
-const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
-  if (credentialResponse.credential) {
-    try {
-      const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
-      console.log("Google User:", decoded);
+  const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
+    console.log("Google Credential Response:", credentialResponse);
+    if (credentialResponse.credential) {
+      try {
+        const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
+        console.log("Google User Decoded:", decoded);
 
-      if (!decoded.email) {
-        throw new Error("Google Sign Up failed: Email not provided");
-    }
-
-      setIsLoading(true);
-      const existsResponse = await checkUserExists(decoded.email);
-      if (!existsResponse.success) {
-        throw new Error(existsResponse.message || "Failed to check user existence");
-      }
-
-      if (existsResponse.exists) {
-        // Login with Google email (no password)
-        const loginResponse = await axios.post('/api/auth/login', { email: decoded.email });
-        if (!loginResponse.data.success) {
-          throw new Error(loginResponse.data.message || "Login failed");
+        if (!decoded.email) {
+          throw new Error("Google Sign Up failed: Email not provided");
         }
-        localStorage.setItem("accessToken", loginResponse.data.accessToken);
-        localStorage.setItem("userId", loginResponse.data._id);
-        localStorage.setItem("googleToken", credentialResponse.credential);
-        localStorage.setItem("googleUser", JSON.stringify(decoded));
-        toast.success(`Welcome back to MindSnap, ${decoded.name || "User"}!`);
-        navigate("/");
-      } else {
-        // Register new user
-        const username = decoded.email?.split('@')[0] || `user_${Date.now()}`;
-        const registerResponse = await register(
-          decoded.name || "Google User",
-          username,
-          decoded.email,
-          "google-signup"
+
+        setIsLoading(true);
+
+        const permission = window.confirm(
+          "MindSnap would like to access your Google account for email and profile information. Do you allow this to register or log in?"
         );
-        if (!registerResponse.success) {
-          throw new Error(registerResponse.message || "Registration failed");
+        console.log("User response:", permission);
+        if (!permission) {
+          toast.info("Google sign-up cancelled by user.");
+          return;
         }
-        localStorage.setItem("accessToken", registerResponse.token);
-        localStorage.setItem("userId", registerResponse._id);
-        localStorage.setItem("googleToken", credentialResponse.credential);
-        localStorage.setItem("googleUser", JSON.stringify(decoded));
-        toast.success(`Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`);
-        navigate("/");
+
+        const existsResponse = await checkUserExists(decoded.email);
+        if (!existsResponse.success) {
+          throw new Error(existsResponse.message || "Failed to check user existence");
+        }
+
+        if (existsResponse.exists) {
+          const loginResponse = await axios.post('/api/auth/login', { email: decoded.email });
+          if (!loginResponse.data.success) {
+            throw new Error(loginResponse.data.message || "Login failed");
+          }
+          localStorage.setItem("accessToken", loginResponse.data.accessToken);
+          localStorage.setItem("userId", loginResponse.data._id);
+          localStorage.setItem("googleToken", credentialResponse.credential);
+          localStorage.setItem("googleUser", JSON.stringify(decoded));
+          toast.success(`Welcome back to MindSnap, ${decoded.name || "User"}!`);
+          navigate("/");
+        } else {
+          const username = decoded.email?.split('@')[0] || `user_${Date.now()}`;
+          const registerResponse = await register(
+            decoded.name || "Google User",
+            username,
+            decoded.email,
+            "google-signup"
+          );
+          if (!registerResponse.success) {
+            throw new Error(registerResponse.message || "Registration failed");
+          }
+          localStorage.setItem("accessToken", registerResponse.token);
+          localStorage.setItem("userId", registerResponse._id);
+          localStorage.setItem("googleToken", credentialResponse.credential);
+          localStorage.setItem("googleUser", JSON.stringify(decoded));
+          toast.success(`Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`);
+          navigate("/");
+        }
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error
+            ? err.message
+            : "Failed to process Google Sign Up. Please try again.";
+        console.error("Google Sign Up Error:", err);
+        toast.error(errorMessage);
+        setError(errorMessage);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : "Failed to process Google Sign Up. Please try again.";
-      console.error("Google Sign Up Error:", err);
-      toast.error(errorMessage);
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
     }
-  }
-};
+  };
 
   const handleGoogleError = () => {
     const errorMessage = "Google Sign Up failed. Please try again.";
@@ -198,22 +202,23 @@ const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/goog
         <img
           src={landingPageImg}
           alt="Illustration"
-          className="illustration-image ml-20 mt-8 w-full h-full object-contain"
+          className="illustration-image ml-20 mt-20 w-full h-full object-contain"
         />
       </div>
+
       <div className="form-container w-1/2 p-8 flex flex-col items-center">
-        <div className="flex items-center mb-8">
+        <div className="flex items-center justify-center mb-8 mr-130">
           <div className="w-25 h-25 mr-2">
             <img
               src={logoImg}
               alt="MindSnap Logo"
-              className="w-full h-full object-cover rounded-full"
+              className="w-full h-full pb-3 pl-2 object-cover rounded-full"
             />
           </div>
-          <h1 className="text-5xl font-bold">MindSnap</h1>
+          <h1 className="text-4xl font-bold pr-2">Mind<span className="text-yellow-400">Snap</span></h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="w-72 formContainer">
+        <form onSubmit={handleSubmit} className="w-72 mb-8 formContainer">
           <div className="formHeader flex justify-between gap-10 mb-5 ">
             <button
               className="loginToggle text-white text-lg font-semibold rounded-lg ml-18 px-4 py-2 hover:bg-gray-700 transition-colors"
@@ -366,14 +371,16 @@ const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/goog
           </p>
           <div className="mt-4 flex justify-center">
             <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={handleGoogleError}
-                useOneTap
-                text="continue_with"
-                shape="rectangular"
-                theme="filled_blue"
-                size="large"
-            />
+  onSuccess={handleGoogleSuccess}
+  onError={handleGoogleError}
+  useOneTap={false}
+  ux_mode="popup" 
+  text="continue_with"
+  shape="rectangular"
+  theme="filled_blue"
+  size="large"
+/>
+
           </div>
         </form>
       </div>

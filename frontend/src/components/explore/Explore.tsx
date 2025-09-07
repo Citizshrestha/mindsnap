@@ -46,6 +46,7 @@ const Explore = () => {
                     <video
                       autoPlay
                       muted
+                      loop
                       controls
                       className="w-full h-full object-cover"
                     >

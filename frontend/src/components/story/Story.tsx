@@ -34,7 +34,6 @@ const Story = () => {
         });
         const data = res.data || {};
         
-        // Dispatch profile picture to Redux store
         if (data.profilePicture) {
           dispatch(setProfilePicture(data.profilePicture));
         }
@@ -53,16 +52,26 @@ const Story = () => {
       }
     };
     
-    // Only fetch profile if we don't have it already
     if (!currentPic) {
       fetchProfile();
     }
   }, [dispatch, currentPic]);
 
-  const handleSaveStory = (story: { caption: string; mediaUrl?: string }) => {
+  const handleSaveStory = (story: { caption: string; mediaUrl?: string; userId: string }) => {
     console.log("New story saved:", story);
 
-    // Refresh stories from API to include the new one
+    // Immediately add the new story to the state
+    const newStory: StorySample = {
+      user: "You", // Placeholder, replace with actual username if available from API
+      profilePic: currentPic || "",
+      content: story.mediaUrl || "",
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      views: [],
+      likes: [],
+    };
+    setStories((prevStories) => [newStory, ...prevStories.filter(s => s.user !== "You" || s.content !== newStory.content)]);
+
+    // Refresh stories from API to sync with backend
     fetchStories();
     setShowCreateStory(false);
   };
@@ -74,20 +83,34 @@ const Story = () => {
           Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
       });
-      // Map API response to StorySample format
-      const fetchedStories = res.data.map((story: any) => ({
-        user: story.user.name, // Assuming user is populated
-        profilePic: story.user.profilePicture,
-        content: story.content, // If mediaUrl is stored here
-        expiresAt: story.expiresAt,
-        views: story.views,
-        likes: story.likes,
-      }));
-      setStories(fetchedStories);
+      const storiesData = res.data.stories;
+      if (Array.isArray(storiesData)) {
+        const fetchedStories = storiesData.map((story) => ({
+          user: story.user?.username || "Unknown User",
+          profilePic: story.user?.profilePicture || "",
+          content: story.content || "",
+          expiresAt: story.expiresAt,
+          views: story.views || [],
+          likes: story.likes || [],
+        }));
+        setStories(fetchedStories);
+      } else {
+        console.error("Unexpected response format:", res.data);
+        setStories([]);
+        toast.error("Failed to load stories due to invalid response format");
+      }
     } catch (err) {
       console.error("Fetch Stories error:", err);
       toast.error("Failed to load stories");
     }
+  };
+
+  const handleOpenCreateStory = () => {
+    if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
+      toast.error("Please log in to create a story.");
+      return;
+    }
+    setShowCreateStory(true);
   };
 
   return (
@@ -105,34 +128,33 @@ const Story = () => {
             768: { slidesPerView: 4.5 },
           }}
         >
-          {/* Add Story */}
-          <SwiperSlide>
-            <div
-              className="stories relative w-[170px] h-[190px] overflow-hidden rounded-[20px] border-2 border-[#611DD0] cursor-pointer hover:border-[#a679ee] transition-colors"
-              onClick={() => setShowCreateStory(true)}
-              style={{
-                backgroundImage: currentPic ? `url("${currentPic}")` : "none",
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-                backgroundRepeat: "no-repeat",
-              }}
-            >
-              {/* Overlay with plus sign */}
-              <div className={`w-full h-full flex items-center justify-center `}>
-                <span className={`text-4xl ${currentPic ? "text-white" : "text-[#611DD0]"}`}>+</span>
+          {stories.filter(story => story.user === "You").length === 0 && (
+            <SwiperSlide>
+              <div
+                className="stories relative w-[170px] h-[190px] overflow-hidden rounded-[20px] border-2 border-[#611DD0] cursor-pointer hover:border-[#a679ee] transition-colors"
+                onClick={handleOpenCreateStory}
+                style={{
+                  backgroundImage: currentPic ? `url("${currentPic}")` : "none",
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  backgroundRepeat: "no-repeat",
+                }}
+              >
+                <div className={`w-full h-full flex items-center justify-center `}>
+                  <span className={`text-4xl ${currentPic ? "text-white" : "text-[#611DD0]"}`}>+</span>
+                </div>
+                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white text-lg font-semibold">
+                  Add Story
+                </div>
               </div>
-              <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white text-lg font-semibold">
-                Add Story
-              </div>
-            </div>
-          </SwiperSlide>
+            </SwiperSlide>
+          )}
 
-          {/* Stories */}
           {stories.map((story, idx) => (
             <SwiperSlide key={`${story.user}-${idx}`}>
               <div className="stories relative w-[170px] h-[190px] overflow-hidden rounded-[20px] border-2 border-[#611DD0] hover:border-[#a679ee] transition-colors">
                 <img
-                  src={story.content} // Assuming content is the media URL
+                  src={story.profilePic || story.content}
                   alt={`Story ${idx + 1}`}
                   className="w-full h-full object-cover"
                 />
@@ -145,7 +167,7 @@ const Story = () => {
         </Swiper>
       </div>
 
-      {showCreateStory && (
+      {showCreateStory && userId && /^[0-9a-fA-F]{24}$/.test(userId) && (
         <CreateStory
           onClose={() => setShowCreateStory(false)}
           onSave={handleSaveStory}

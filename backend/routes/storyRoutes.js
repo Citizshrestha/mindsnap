@@ -1,4 +1,3 @@
-// routes/storyRoutes.js
 import express from "express";
 import { createStory, getStories, likeStory, viewStory } from "../controllers/storyController.js";
 import protect from "../middleware/authMiddleware.js";

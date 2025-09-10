@@ -1,4 +1,3 @@
-// controllers/storyController.js
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { Story } from "../models/story.models.js";
 import { Notification } from "../models/notification.models.js"; 
@@ -6,58 +5,37 @@ import { User } from "../models/user.models.js";
 
 // Create a new story
 export const createStory = asyncHandler(async (req, res) => {
-  const { caption, mediaUrl } = req.body;
-
-  if (!caption && !mediaUrl) {
-    res.status(400);
-    throw new Error("Caption or media URL is required");
-  }
-
-  // Validate userId from token
+  const { caption, content } = req.body;
   const userId = req.user._id;
-  if (!mongoose.Types.ObjectId.isValid(userId)) {
+
+  if (!caption && !content) {
     res.status(400);
-    throw new Error("Invalid user ID");
+    throw new Error("Caption or content is required");
   }
 
   const story = await Story.create({
-    user: userId, // Use req.user._id from auth middleware
-    content: mediaUrl || caption,
+    user: userId,
+    caption,
+    content,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), 
   });
 
-  // Populate for response
-  await story.populate("user", "username profilePicture");
-
-  res.status(201).json({
-    success: true,
-    story,
-  });
+  res.status(201).json({ success: true, story });
 });
 
 // Get stories for the authenticated user and followed users
 export const getStories = asyncHandler(async (req, res) => {
-  const currentUser = await User.findById(req.user._id).populate("following");
+  const currentUser = await User.findById(req.user._id).select('following');
+  const userIds = [req.user._id, ...(currentUser?.following || [])];
 
-  if (!currentUser) {
-    res.status(404);
-    throw new Error("User not found");
-  }
-
-  const followingIds = currentUser.following.map((follow) => follow._id);
-
-  const stories = await Story.find({
-    user: { $in: [req.user._id, ...followingIds] },
-    expiresAt: { $gt: new Date() }, // Only active stories
+  const stories = await Story.find({ 
+    user: { $in: userIds },
+    expiresAt: { $gt: new Date() } 
   })
-    .populate("user", "username profilePicture fullname") // Populate user details
-    .populate("views", "username") // Populate views for display
-    .populate("likes", "username") // Populate likes for display
-    .sort({ createdAt: -1 }); // Latest first
+    .populate("user", "username fullname profilePicture")
+    .sort({ createdAt: -1 });
 
-  res.json({
-    success: true,
-    stories,
-  });
+  res.json({ stories });
 });
 
 // Like/unlike a story

@@ -1,13 +1,13 @@
-// src/components/createStory/CreateStory.tsx
 import { useState } from "react";
 import axiosClient from "../../api/axiosClient";
+import { isAxiosError, AxiosError } from "axios";
 import { toast } from "react-toastify";
 import { FaWindowClose, FaCamera, FaPlay } from "react-icons/fa";
 
 interface CreateStoryProps {
   onClose: () => void;
   onSave: (story: { caption: string; mediaUrl?: string; userId: string }) => void;
-  userId: string; // Pass from parent
+  userId: string;
 }
 
 const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
@@ -22,7 +22,17 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
       return;
     }
 
-    // Validate userId as ObjectId (24 hex chars)
+    if (media) {
+      if (!/(image\/(jpg|jpeg|png|gif))|(video\/(mp4|mov))/.test(media.type)) {
+        toast.error("Please upload a supported image (jpg, jpeg, png, gif) or video (mp4, mov) file.");
+        return;
+      }
+      if (media.size > 10 * 1024 * 1024) { // 10MB limit
+        toast.error("File size must not exceed 10MB.");
+        return;
+      }
+    }
+
     if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
       toast.error("Invalid user ID. Please log in again.");
       onClose();
@@ -38,14 +48,14 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
 
     try {
       setLoading(true);
-      let mediaUrl = "";
+      let content = "";
 
       if (media) {
-        console.log("Uploading media to Cloudinary...");
+        console.log("Uploading image to Cloudinary...");
         const formData = new FormData();
         formData.append("file", media);
         formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "");
-        formData.append("folder", `mindsnap/stories/${userId}`);
+        formData.append("folder", "mindsnap/stories"); 
 
         const res = await fetch(
           `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
@@ -54,36 +64,58 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
         const data = await res.json();
         console.log("Cloudinary response:", data);
         if (!res.ok) {
-          throw new Error(data.error?.message || "Upload failed");
+          throw new Error(`Cloudinary upload failed: ${data.error?.message || "Unknown error"}`);
         }
-        mediaUrl = data.secure_url;
-        console.log("Media uploaded successfully:", mediaUrl);
+        content = data.secure_url;
+        console.log("Image uploaded successfully:", content);
       }
 
-      // Save to MongoDB - ensure user is ObjectId
-      console.log("Saving story to database...");
-      const storyData = {
-        user: userId, // Mongoose will cast string to ObjectId if valid
-        content: mediaUrl || caption,
-      };
-
-      const response = await axiosClient.post("/api/stories", storyData, {
+      console.log("Sending story data to API:", { caption, content, user: userId });
+      const response = await axiosClient.post("/api/stories", {
+        caption,
+        content: content || "",
+        user: userId,
+      }, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
 
-      console.log("Database response:", response.data);
-      if (!response.data.success) {
-        throw new Error(response.data.message || "Failed to save story");
+      console.log("API response (full):", response.data);
+      if (!response.data || typeof response.data !== "object" || !response.data.success) {
+        throw new Error(`Database error: ${response.data?.message || "Failed to save story"}`);
       }
 
-      onSave({ caption, mediaUrl, userId });
+      // const { story } = response.data; // Extract the created story from the response
+      onSave({ caption, mediaUrl: content || "", userId }); // Pass the new story data back
       toast.success("Story created successfully!");
       onClose();
-    } catch (err) {
-  
-      toast.error(`Error: ${err}`);
+    } catch (err: unknown) {
+      let errorMessage = "Failed to create story";
+      let responseData: unknown = undefined;
+      let status: number | undefined = undefined;
+      let requestUrl: string | undefined = undefined;
+
+      if (isAxiosError(err)) {
+        const axiosErr = err as AxiosError;
+        responseData = axiosErr.response?.data;
+        status = axiosErr.response?.status;
+        requestUrl = axiosErr.config?.url;
+        errorMessage = (axiosErr.response?.data as  AxiosError)?.message || axiosErr.message || errorMessage;
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === "string") {
+        errorMessage = err;
+      }
+
+      toast.error(`Error: ${errorMessage}`);
+      console.error("Story creation error details:", {
+        message: errorMessage,
+        stack: err instanceof Error ? err.stack : undefined,
+        response: responseData,
+        status,
+        request: requestUrl,
+      });
     } finally {
       setLoading(false);
     }
@@ -95,7 +127,6 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
         style={{ textAlign: "left" }}
         className="relative w-[470px] h-[450px] text-left overflow-hidden rounded-[20px] border-2 border-[#611DD0] bg-white p-4 cursor-pointer hover:border-[#a679ee] transition-colors"
       >
-        {/* Close Icon */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-[#611DD0] hover:text-[#a679ee] text-xl"
@@ -104,11 +135,9 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
           <FaWindowClose size={25} />
         </button>
 
-        {/* Title */}
         <h2 className="text-center text-[#611DD0] border-b-2 border-[#611DD0] text-xl font-semibold mb-6">Create New Story</h2>
 
         <form onSubmit={handleSubmit} className="w-full h-[calc(100%-100px)] mt-10 flex flex-col items-center justify-between">
-          {/* File Inputs with Icons */}
           <div className="flex flex-col gap-6 items-center w-[90%]">
             <div className="flex items-center gap-2 w-full">
               <FaCamera className="text-[#611DD0] text-2xl" />
@@ -136,7 +165,6 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
             </div>
             <div className="flex items-center gap-2 w-full">
               <h2 className="text-[#611DD0] text-sm font-medium">Message</h2>
-              {/* Caption Textarea */}
               <textarea
                 value={caption}
                 onChange={(e) => setCaption(e.target.value)}
@@ -146,7 +174,6 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
             </div>
           </div>
 
-          {/* Buttons */}
           <div className="absolute right-6 bottom-6 flex justify-end gap-4">
             <button
               type="button"

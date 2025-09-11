@@ -23,6 +23,28 @@ export const createStory = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, story });
 });
 
+export const deleteStory = asyncHandler(async (req, res) => {
+  const { storyId } = req.params;
+
+  const story = await Story.findById(storyId);
+  if (!story) {
+    res.status(404);
+    throw new Error("Story not found");
+  }
+
+  // Check if the authenticated user is the owner
+  if (story.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error("Not authorized to delete this story");
+  }
+
+  await story.remove();
+  res.json({
+    success: true,
+    message: "Story deleted successfully",
+  });
+});
+
 // Get stories for the authenticated user and followed users
 export const getStories = asyncHandler(async (req, res) => {
   const currentUser = await User.findById(req.user._id).select('following');

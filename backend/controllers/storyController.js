@@ -26,6 +26,12 @@ export const createStory = asyncHandler(async (req, res) => {
 export const deleteStory = asyncHandler(async (req, res) => {
   const { storyId } = req.params;
 
+  // Validate storyId format
+  if (!mongoose.Types.ObjectId.isValid(storyId)) {
+    res.status(400);
+    throw new Error("Invalid story ID format");
+  }
+
   const story = await Story.findById(storyId);
   if (!story) {
     res.status(404);
@@ -38,7 +44,8 @@ export const deleteStory = asyncHandler(async (req, res) => {
     throw new Error("Not authorized to delete this story");
   }
 
-  await story.remove();
+  await Story.deleteOne({ _id: storyId });
+  
   res.json({
     success: true,
     message: "Story deleted successfully",

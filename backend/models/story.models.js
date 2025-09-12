@@ -8,8 +8,17 @@ const storySchema = new mongoose.Schema(
             required: true
         },
         content: {
-            type: String,
-            trim: true,
+            url: {
+                type: String,
+                required: true,
+                trim: true,
+            },
+            mediaType: {
+                type: String,
+                required: true,
+                enum: ["image", "video"],
+                default: "image"
+            }
         },
         caption: {
             type: String,

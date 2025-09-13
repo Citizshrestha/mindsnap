@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { FaHome, FaEnvelope, FaPaintBrush, FaSignOutAlt, FaPodcast } from "react-icons/fa";
+import { FaHome, FaEnvelope, FaPaintBrush, FaSignOutAlt } from "react-icons/fa";
 import { FiPlus } from "react-icons/fi";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./sidebar.css";
 
 import toyHome from "../../../public/images/toyhome.png";
-import posts from "../../../public/images/Posts.png";
 import createPost from "../../../public/images/CreatePosts.png";
 import messageImgIcon from "../../../public/images/messages.png";
 import themes from "../../../public/images/themes.png";
 import logout from "../../../public/images/logout.png";
+import { logout as performLogout } from "../../api/auth"; // Import the logout function
 
 const Sidebar = () => {
   const [imgErr, setImgErr] = useState(false);
@@ -23,7 +23,6 @@ const Sidebar = () => {
     }
   }, [location.pathname]);
 
-  // Sidebar styles
   const sidebarStyle: React.CSSProperties = {
     background: "#611DD0",
     color: "#fff",
@@ -40,7 +39,6 @@ const Sidebar = () => {
     transition: "width 0.3s ease",
   };
 
-  // Links
   const linkStyle = (path: string): React.CSSProperties => ({
     display: "flex",
     alignItems: "center",
@@ -57,7 +55,6 @@ const Sidebar = () => {
     transition: "all 0.3s ease-in",
   });
 
-  // Hover tooltip style
   const tooltipStyle: React.CSSProperties = {
     position: "absolute",
     top: "50%",
@@ -76,7 +73,6 @@ const Sidebar = () => {
     zIndex: 10,
   };
 
-  // Safe hover handler
   const showTooltip = (e: React.MouseEvent<HTMLElement>) => {
     if (isCollapsed) {
       const tooltip = e.currentTarget.querySelector(".tooltip") as HTMLElement | null;
@@ -99,13 +95,26 @@ const Sidebar = () => {
     }
   };
 
-  const handleLogout = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleLogout = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    localStorage.removeItem("userSession");
-    navigate("/");
+    try {
+      await performLogout();
+      // Additional cleanup to ensure no session data remains
+      localStorage.clear(); // Clears all localStorage items (use cautiously if other data is stored)
+      // Or specifically clear only session-related items
+      // localStorage.removeItem("accessToken");
+      // localStorage.removeItem("userId");
+      // localStorage.removeItem("userSession");
+      navigate("/");
+      window.location.reload(); // Force a full page reload to reset the app state
+    } catch (error) {
+      console.error("Logout failed:", error);
+      localStorage.clear(); // Fallback cleanup
+      navigate("/");
+      window.location.reload();
+    }
   };
 
-  // Handle navigation and enforce collapsed state for /messages
   const handleNavigate = (path: string) => {
     if (path === "/messages") {
       setIsCollapsed(true); 
@@ -131,22 +140,6 @@ const Sidebar = () => {
         )}
         {!isCollapsed && "Home"}
         {isCollapsed && <div className="tooltip" style={tooltipStyle}>Home</div>}
-      </a>
-
-      <a
-        href="/posts"
-        style={linkStyle("/posts")}
-        onClick={(e) => { e.preventDefault(); handleNavigate("/posts"); }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        {imgErr ? (
-          <FaPodcast size={23.5} />
-        ) : (
-          <img src={posts} alt="postsIcon" onError={() => setImgErr(true)} style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }} />
-        )}
-        {!isCollapsed && "Posts"}
-        {isCollapsed && <div className="tooltip" style={tooltipStyle}>Posts</div>}
       </a>
 
       <a
@@ -213,7 +206,6 @@ const Sidebar = () => {
         {isCollapsed && <div className="tooltip" style={tooltipStyle}>Logout</div>}
       </a>
 
-      {/* Toggle Button - Disabled when on /messages */}
       <button
         onClick={() => {
           if (location.pathname !== "/messages") {
@@ -237,7 +229,7 @@ const Sidebar = () => {
         disabled={location.pathname === "/messages"}
       >
         {isCollapsed ? "→" : "←"}
-        {isCollapsed && <div className="tooltip mt-60" style={tooltipStyle}>{isCollapsed ? "Close Sidebar" : "Open Sidebar"}</div>}
+        {isCollapsed && <div className="tooltip mt-60" style={tooltipStyle}>{isCollapsed ? "Open Sidebar" : "Close Sidebar"}</div>}
       </button>
     </div>
   );

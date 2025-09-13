@@ -97,7 +97,9 @@ const ResetPasswordForm = () => {
             className="w-full h-full object-cover rounded-full"
           />
         </div>
-        <h1 className="text-5xl font-bold">MindSnap</h1>
+         <h1 className="text-4xl font-bold">
+          Mind<span className="text-yellow-400">Snap</span>
+        </h1>
       </div>
       <div className="formContainer p-8 bg-[#16024B] rounded-2xl flex flex-col items-center">
         <h2 className="text-2xl font-semibold mb-6">Reset Password</h2>

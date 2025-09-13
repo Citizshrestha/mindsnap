@@ -10,6 +10,11 @@ interface CreateStoryProps {
   userId: string;
 }
 
+interface Content {
+  url: string;
+  mediaType: "image" | "video" | "text";
+}
+
 const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
   const [caption, setCaption] = useState("");
   const [media, setMedia] = useState<File | null>(null);
@@ -23,7 +28,7 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
     }
 
     if (media) {
-      if (!/(image\/(jpg|jpeg|png|gif))|(video\/(mp4|mov))/.test(media.type)) {
+      if (!/(image\/(jpg|jpeg|png|gif|webp))|(video\/(mp4|mov))/.test(media.type)) {
         toast.error("Please upload a supported image (jpg, jpeg, png, gif) or video (mp4, mov) file.");
         return;
       }
@@ -48,17 +53,17 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
 
     try {
       setLoading(true);
-      let content = "";
+      const content: Content = { url: "", mediaType: "text" };
 
       if (media) {
-        console.log("Uploading image to Cloudinary...");
+        console.log("Uploading media to Cloudinary...");
         const formData = new FormData();
         formData.append("file", media);
         formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "");
-        formData.append("folder", "mindsnap/stories"); 
+        formData.append("folder", "mindsnap/stories");
 
         const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
+          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/auto/upload`,
           { method: "POST", body: formData }
         );
         const data = await res.json();
@@ -66,14 +71,15 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
         if (!res.ok) {
           throw new Error(`Cloudinary upload failed: ${data.error?.message || "Unknown error"}`);
         }
-        content = data.secure_url;
-        console.log("Image uploaded successfully:", content);
+        content.url = data.secure_url;
+        content.mediaType = media.type.startsWith("video") ? "video" : "image";
+        console.log("Media uploaded successfully:", content);
       }
 
       console.log("Sending story data to API:", { caption, content, user: userId });
       const response = await axiosClient.post("/api/stories", {
         caption,
-        content: content || "",
+        content: content.url ? content : { url: "", mediaType: "text" },
         user: userId,
       }, {
         headers: {
@@ -86,8 +92,7 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
         throw new Error(`Database error: ${response.data?.message || "Failed to save story"}`);
       }
 
-      // const { story } = response.data; // Extract the created story from the response
-      onSave({ caption, mediaUrl: content || "", userId }); // Pass the new story data back
+      onSave({ caption, mediaUrl: content.url || "", userId });
       toast.success("Story created successfully!");
       onClose();
     } catch (err: unknown) {
@@ -101,7 +106,7 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
         responseData = axiosErr.response?.data;
         status = axiosErr.response?.status;
         requestUrl = axiosErr.config?.url;
-        errorMessage = (axiosErr.response?.data as  AxiosError)?.message || axiosErr.message || errorMessage;
+        errorMessage = (axiosErr.response?.data as { message?: string })?.message || axiosErr.message || errorMessage;
       } else if (err instanceof Error) {
         errorMessage = err.message;
       } else if (typeof err === "string") {

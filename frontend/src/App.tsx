@@ -16,6 +16,7 @@ import EditProfile from "./components/editProfile/EditProfile";
 import ErrorBoundary from "./components/errorBoundary/ErrorBoundary";
 import Message from "./components/message/Message";
 import Explore from "./components/explore/Explore"; 
+import Connection from "./components/connections/Connection";
 
 const App: React.FC = () => {
   return (
@@ -33,9 +34,11 @@ const App: React.FC = () => {
           <Route element={<AuthenticatedLayout />}>
             <Route path="/home" element={<Home />} />
             <Route path="/profile" element={<UserProfile />} />
+            <Route path="/profile/:userId" element={<UserProfile />} />
             <Route path="/edit-userprofile" element={<EditProfile />} />
             <Route path="/messages" element={<Message />} />
-            <Route path="/explore" element={<Explore />} /> {/* Add Explore route */}
+            <Route path="/explore" element={<Explore />} />
+             <Route path="/connections" element={<Connection />} />
           </Route>
         </Routes>
         <ToastContainer

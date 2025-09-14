@@ -1,12 +1,12 @@
-// controllers/userController.js
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.models.js";
 import cloudinary from "../config/cloudinary.js";
+import mongoose from "mongoose"; // Added: Import mongoose for ObjectId conversion
 
 // @route GET /api/users/profile
 export const getUserProfileInfo = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).select(
-    "fullname username postsCount profilePicture aboutMe vibe vibeDescription"
+    "fullname username postsCount profilePicture aboutMe vibe vibeDescription followers following"
   );
 
   if (!user) {
@@ -24,12 +24,15 @@ export const getUserProfileInfo = asyncHandler(async (req, res) => {
     aboutMe: user.aboutMe,
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,
-    postsCount: user.postsCount
+    postsCount: user.postsCount,
+    followers: user.followers.length,
+    following: user.following.length
   });
 });
 
 // @route PATCH /api/users/update-profile
 export const updateUserProfile = asyncHandler(async (req, res) => {
+  
   const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture } = req.body;
 
   const user = await User.findById(req.user._id);
@@ -154,10 +157,11 @@ export const getUserById = asyncHandler(async (req, res) => {
 
 // @route POST /api/users/:id/follow
 export const followUser = asyncHandler(async (req, res) => {
-  const targetId = req.params.id;
+  const targetIdStr = req.params.id; // Added: Extract string ID from params
+  const targetId = new mongoose.Types.ObjectId(targetIdStr); // Added: Convert to ObjectId for consistency
   const userId = req.user._id;
 
-  if (userId.toString() === targetId) {
+  if (userId.toString() === targetIdStr) {
     return res.status(400).json({ success: false, message: "You cannot follow yourself" });
   }
 
@@ -166,32 +170,115 @@ export const followUser = asyncHandler(async (req, res) => {
 
   if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
 
-  if (!currentUser.following.includes(targetId)) {
+  // Added: Convert userId to ObjectId for includes check
+  const userIdObj = new mongoose.Types.ObjectId(userId);
+  if (!currentUser.following.some(id => id.equals(targetId))) { // Added: Use equals() for ObjectId comparison instead of includes with string
     currentUser.following.push(targetId);
-    targetUser.followers.push(userId);
+    targetUser.followers.push(userIdObj);
 
     await currentUser.save();
     await targetUser.save();
   }
 
-  res.status(200).json({ success: true, message: "Followed successfully" });
+  res.status(200).json({ 
+    success: true, 
+    message: "Followed successfully",
+    followers: targetUser.followers.length,
+    following: currentUser.following.length,
+    isFollowing: true,
+  });
 });
 
 // @route POST /api/users/:id/unfollow
 export const unfollowUser = asyncHandler(async (req, res) => {
   const targetId = req.params.id;
   const userId = req.user._id;
+  const { action } = req.body;
 
   const targetUser = await User.findById(targetId);
   const currentUser = await User.findById(userId);
 
-  if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+  if (!targetUser || !currentUser) {
+    return res.status(404).json({ success: false, message: "User not found" });
+  }
 
-  currentUser.following = currentUser.following.filter(id => id.toString() !== targetId);
-  targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId);
+  let updated = false;
 
-  await currentUser.save();
-  await targetUser.save();
+  if (action === "removeFollower") {
+    // Remove targetUser from currentUser's followers
+    const beforeFollowers = currentUser.followers.length;
+    currentUser.followers = currentUser.followers.filter(id => id.toString() !== targetId.toString());
+    // Also remove currentUser from targetUser's following
+    targetUser.following = targetUser.following.filter(id => id.toString() !== userId.toString());
 
-  res.status(200).json({ success: true, message: "Unfollowed successfully" });
+    updated = beforeFollowers !== currentUser.followers.length;
+    if (!updated) {
+      return res.status(400).json({ success: false, message: "This user is not your follower" });
+    }
+  } else {
+    // Unfollow: remove target from currentUser's following
+    const beforeFollowing = currentUser.following.length;
+    currentUser.following = currentUser.following.filter(id => id.toString() !== targetId.toString());
+    // Remove currentUser from targetUser's followers
+    targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId.toString());
+
+    updated = beforeFollowing !== currentUser.following.length;
+    if (!updated) {
+      return res.status(400).json({ success: false, message: "You are not following this user" });
+    }
+  }
+
+  await currentUser.save({ validateBeforeSave: false });
+  await targetUser.save({ validateBeforeSave: false });
+
+  return res.status(200).json({
+    success: true,
+    message: action === "removeFollower" ? "Removed follower successfully" : "Unfollowed successfully",
+    followers: targetUser.followers.length,
+    following: currentUser.following.length,
+    isFollowing: false,
+  });
+});
+
+
+// @route GET /api/users/:userId/connections
+export const getUserConnections = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { type } = req.query; // 'followers' or 'following'
+
+  if (!type || !['followers', 'following'].includes(type.toString())) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid or missing type parameter. Use 'followers' or 'following'",
+    });
+  }
+
+  // Use logged-in user's ID if no userId is provided (e.g., for /api/users/profile/connections)
+  const targetUserId = userId ? userId : req.user._id;
+
+  try {
+    const user = await User.findById(targetUserId)
+      .populate(type, "username fullname profilePicture")
+      .select(`${type}`)
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User Not Found!",
+      });
+    }
+
+    // Ensure the response matches the expected structure
+    return res.status(200).json({
+      success: true,
+      [type]: user[type] || [],
+    });
+  } catch (error) {
+    console.error(`Error fetching ${type} connections:`, error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while fetching connections",
+    });
+  }
 });

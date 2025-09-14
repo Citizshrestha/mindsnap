@@ -1,5 +1,4 @@
-// src/components/UserProfile.tsx
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "./userProfile.css";
 import axiosClient from "../../api/axiosClient";
 import { useSelector, useDispatch } from "react-redux";
@@ -8,6 +7,30 @@ import type { RootState, AppDispatch } from "../../redux/store";
 import { useNavigate, useParams } from "react-router-dom";
 import defaultAvatar from "../../../public/images/coverImage.png";
 import MoodMaker from "../MoodMaker/MoodMaker";
+import { toast } from "react-toastify";
+import {FaWindowClose} from "react-icons/fa";
+import Loader from "../Loader"; 
+
+interface UserProfileData {
+  success: boolean;
+  username: string;
+  fullname: string;
+  profilePicture: string;
+  aboutMe: string;
+  vibe: string;
+  vibeDescription: string;
+  postsCount: number;
+  followers: number;
+  following: number;
+  isFollowing?: boolean;
+}
+
+interface UserConnection {
+  _id: string;
+  username: string;
+  fullname: string;
+  profilePicture: string;
+}
 
 const UserProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -15,85 +38,155 @@ const UserProfile: React.FC = () => {
     (state: RootState) => state.user
   );
   const { userId } = useParams<{ userId?: string }>();
+  const loggedInUserId = localStorage.getItem("userId");
+
   const [fullname, setFullname] = useState("");
   const [error, setError] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [vibe, setVibe] = useState("");
   const [vibeDescription, setVibeDescription] = useState("");
   const [postsCount, setPostsCount] = useState(0);
-  const [followers, setFollowers] = useState(0);
-  const [following, setFollowing] = useState(0);
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
+  const [followersList, setFollowersList] = useState<UserConnection[]>([]);
+  const [followingList, setFollowingList] = useState<UserConnection[]>([]);
+  const [showModal, setShowModal] = useState<"followers" | "following" | null>(null);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState<string | null>(null); 
+  const [showUnfollowConfirm, setShowUnfollowConfirm] = useState<string | null>(null); 
+  const [isLoading, setIsLoading] = useState(false); 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) {
-          setError("No token Available");
-          return;
-        }
-
-        const endpoint = userId ? `/api/users/${userId}` : "/api/users/profile";
-        const response = await axiosClient.get(endpoint, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = response.data;
-        setFullname(data.fullname || "");
-        if (data.username) dispatch(setUsername(data.username));
-        if (data.profilePicture) dispatch(setProfilePicture(data.profilePicture));
-        setAboutMe(data.aboutMe || "");
-        setVibe(data.vibe || "");
-        setVibeDescription(data.vibeDescription || "");
-        setPostsCount(data.postsCount || 0);
-        setFollowers(data.followers || 0);
-        setFollowing(data.following || 0);
-        setIsFollowing(data.isFollowing || false);
-      } catch (err) {
-        setError(`Some error fetching the data ${err}`);
+  // Fetch user profile data
+  const fetchUserProfile = useCallback(async () => {
+    setIsLoading(true); // Start loading
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        setError("No token available");
+        return;
       }
-    };
-    fetchUserProfile();
-  }, [userId, currentUsername, dispatch]);
+
+      const endpoint = userId ? `/api/users/${userId}` : "/api/users/profile";
+      const response = await axiosClient.get<UserProfileData>(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = response.data;
+      setFullname(data.fullname || "");
+   if (!userId) {
+      if (data.username) dispatch(setUsername(data.username));
+      if (data.profilePicture) dispatch(setProfilePicture(data.profilePicture));
+    }
+      setAboutMe(data.aboutMe || "");
+      setVibe(data.vibe || "");
+      setVibeDescription(data.vibeDescription || "");
+      setPostsCount(data.postsCount || 0);
+      setFollowersCount(data.followers || 0);
+      setFollowingCount(data.following || 0);
+      setIsFollowing(data.isFollowing || false);
+    } catch (err) {
+      setError(`Error fetching data: ${err}`);
+    } finally {
+      setIsLoading(false); 
+    }
+  }, [userId, dispatch]);
+
+  // Fetch followers or following list
+  const fetchConnections = async (type: "followers" | "following") => {
+    setIsLoading(true); // Start loading
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        toast.error("No authentication token available");
+        return;
+      }
+
+      const endpoint = userId
+        ? `/api/users/${userId}/connections`
+        : "/api/users/profile/connections";
+      const response = await axiosClient.get(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { type },
+      });
+      const data = response.data;
+      if (data.success) {
+        if (type === "followers") setFollowersList(data.followers || []);
+        else setFollowingList(data.following || []);
+      } else {
+        toast.error(`Failed to fetch ${type}: ${data.message}`);
+      }
+    } catch (err: unknown) {
+      console.error(`Error fetching ${type}:`, err);
+      toast.error(`Failed to fetch ${type}: ${err || "Server error"}`);
+    } finally {
+      setIsLoading(false); 
+    }
+  };
+
+// Handle unFollowing or removing a user
+const handleUnfollow = async (targetUserId: string, action: "removeFollower" | "unfollow" = "unfollow") => {
+  setIsLoading(true); 
+  try {
+    const token = localStorage.getItem("accessToken");
+    const response = await axiosClient.post(
+      `/api/users/${targetUserId}/unfollow`,
+      { action }, // Send action type to backend
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (response.data.success) {
+      setIsFollowing(false); // Update main profile follow status if applicable
+      await fetchUserProfile(); // Refresh profile counts
+      if (showModal === "followers" && action === "removeFollower") {
+        // Immediately filter out the removed user from the local list
+        setFollowersList(prevList => prevList.filter(user => user._id !== targetUserId));
+        // Then refresh the full list to ensure consistency
+        await fetchConnections("followers");
+      } else if (showModal === "following" && action === "unfollow") {
+        // Refresh following list after unfollow
+        await fetchConnections("following");
+      }
+      if (action === "removeFollower") {
+        setShowRemoveConfirm(null); // Close remove confirmation
+      } else {
+        setShowUnfollowConfirm(null); // Close unfollow confirmation
+      }
+      toast.success(`${action === "removeFollower" ? "Removed" : "Unfollowed"} successfully`);
+    } else {
+      toast.error(response.data.message || `Failed to ${action === "removeFollower" ? "remove" : "unfollow"} user`);
+    }
+  } catch (err) {
+    console.error("Unfollow error:", err);
+    toast.error(`Failed to ${action === "removeFollower" ? "remove" : "unfollow"} user`);
+  } finally {
+    setIsLoading(false); 
+  }
+};
+  // Handle follow action for the profile
+  const handleFollow = async (targetUserId: string) => {
+    setIsLoading(true); // Start loading
+    try {
+      const token = localStorage.getItem("accessToken");
+      const response = await axiosClient.post(
+        `/api/users/${targetUserId}/follow`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        setIsFollowing(true);
+        await fetchUserProfile();
+        toast.success("Followed successfully");
+      }
+    } catch (err) {
+      console.error("Follow error:", err);
+      toast.error("Failed to follow user");
+    } finally {
+      setIsLoading(false); 
+    }
+  };
 
   const handleEditProfile = () => {
     if (!userId) {
       navigate("/edit-userprofile");
-    }
-  };
-
-  const handleFollow = async () => {
-    if (userId) {
-      try {
-        const token = localStorage.getItem("accessToken");
-        await axiosClient.post(
-          `/api/users/${userId}/follow`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setIsFollowing(true);
-        setFollowers(followers + 1);
-      } catch (err) {
-        console.error("Follow error:", err);
-      }
-    }
-  };
-
-  const handleUnfollow = async () => {
-    if (userId) {
-      try {
-        const token = localStorage.getItem("accessToken");
-        await axiosClient.post(
-          `/api/users/${userId}/unfollow`,
-          {},
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setIsFollowing(false);
-        setFollowers(followers - 1);
-      } catch (err) {
-        console.error("Unfollow error:", err);
-      }
     }
   };
 
@@ -103,222 +196,360 @@ const UserProfile: React.FC = () => {
     }
   };
 
+  const handleShowConnections = (type: "followers" | "following") => {
+    fetchConnections(type);
+    setShowModal(type);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(null);
+    setShowUnfollowConfirm(null); // Close unfollow confirmation
+    setShowRemoveConfirm(null); // Close remove confirmation
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, [fetchUserProfile]);
+
   if (error) {
     return <div>{error}</div>;
   }
 
-  return (
-    <div className="flex mt-18 items-center text-left relative">
-      <div className="ml-[95px] mt-10 w-[75%] p-5 bg-white rounded-2xl text-inherit font-poppins overflow-y-auto h-[calc(100vh-80px)] scrollbar-hide">
-        <div className="flex items-center mb-10 relative">
-          <div className="profileSection w-full">
-            {/* Cover Image with gradient overlay */}
-            <div className="relative h-[250px] w-full rounded-2xl overflow-hidden shadow-lg">
+ return (
+  <div className="flex mt-18 items-center text-left relative">
+    <div className="ml-[95px] mt-10 w-[75%] p-5 bg-white rounded-2xl text-inherit font-poppins overflow-y-auto h-[calc(100vh-80px)] scrollbar-hide">
+      {/* Profile header */}
+      <div className="flex items-center mb-10 relative">
+        <div className="profileSection w-full">
+          <div className="relative h-[250px] w-full rounded-2xl overflow-hidden shadow-lg">
+            <img
+              src={defaultAvatar}
+              className="h-full w-full object-cover"
+              alt="cover"
+            />
+          </div>
+          <div className="absolute left-56 bottom-28 z-10">
+            <div className="rounded-full ml-25 border-4 border-white shadow-xl bg-gradient-to-tr from-[#A084E8] to-[#611DD0] p-1">
               <img
-                src={defaultAvatar}
-                className="h-full w-full object-cover"
-                alt="cover"
+                src={currentProfilePicture || defaultAvatar}
+                alt="profilePic"
+                className="w-42 h-42 rounded-full object-cover bg-white"
+                onError={(e: React.SyntheticEvent<HTMLImageElement>) =>
+                  (e.currentTarget.src = "../../../public/images/default.jpg")
+                }
               />
             </div>
-
-            {/* Profile Image - overlaps cover */}
-            <div className="absolute left-56 bottom-28 z-10">
-              <div className="rounded-full ml-25 border-4 border-white shadow-xl bg-gradient-to-tr from-[#A084E8] to-[#611DD0] p-1">
-                <img
-                  src={currentProfilePicture || defaultAvatar}
-                  alt="profilePic"
-                  className="w-42 h-42 rounded-full object-cover bg-white"
-                  onError={(e: React.SyntheticEvent<HTMLImageElement>) =>
-                    (e.currentTarget.src = "../../../public/images/default.jpg")
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Profile Info and Edit/Follow/Message Buttons */}
-            <div className="flex flex-col md:flex-row items-center justify-between mt-25 px-8">
-              <div className="flex flex-col items-start">
-                <h2 className="text-3xl font-bold text-[#611DD0] drop-shadow-sm">
-                  {fullname}
-                </h2>
-                <h3 className="text-lg text-gray-500 font-medium mb-2">
-                  @{currentUsername}
-                </h3>
-                {!userId && (
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-between mt-25 px-8">
+            <div className="flex flex-col items-start">
+              <h2 className="text-3xl font-bold text-[#611DD0] drop-shadow-sm">
+                {fullname}
+              </h2>
+              <h3 className="text-lg text-gray-700 font-medium mb-2">
+                @{currentUsername}
+              </h3>
+              {!userId && (
+                <button
+                  onClick={handleEditProfile}
+                  className="mt-2 bg-[#611DD0] text-white rounded-full px-6 py-2 font-semibold shadow hover:bg-[#5000B9] transition"
+                >
+                  Edit Profile
+                </button>
+              )}
+              {userId && (
+                <div className="flex justify-between gap-3">
                   <button
-                    onClick={handleEditProfile}
-                    className="mt-2 bg-gradient-to-r from-[#611DD0] to-[#A084E8] text-white rounded-full px-6 py-2 font-semibold shadow hover:scale-105 transition"
+                    onClick={() => (isFollowing ? handleUnfollow(userId) : handleFollow(userId))}
+                    className={`mt-2 px-4 py-2 rounded-full font-semibold shadow ${
+                      isFollowing
+                        ? "bg-red-500 text-white hover:bg-red-600"
+                        : "bg-[#611DD0] text-white hover:bg-[#5000B9]"
+                    }`}
                   >
-                    Edit Profile
+                    {isFollowing ? "Unfollow" : "Follow"}
                   </button>
-                )}
-                {userId && currentUsername !== currentUsername && ( // Show follow/unfollow/message for other users
-                  <>
-                    <button
-                      onClick={isFollowing ? handleUnfollow : handleFollow}
-                      className={`mt-2 px-4 py-2 rounded-full font-semibold shadow ${
-                        isFollowing
-                          ? "bg-red-500 text-white hover:bg-red-600"
-                          : "bg-green-500 text-white hover:bg-green-600"
-                      }`}
-                    >
-                      {isFollowing ? "Unfollow" : "Follow"}
-                    </button>
-                    <button
-                      onClick={handleMessage}
-                      className="mt-2 ml-2 bg-blue-500 text-white px-4 py-2 rounded-full font-semibold shadow hover:bg-blue-600"
-                    >
-                      Message
-                    </button>
-                  </>
-                )}
-              </div>
-              {/* Stats Card */}
-              <div className="flex bg-white/70 backdrop-blur-md rounded-2xl shadow-lg px-10 py-6 gap-12 mt-6 md:mt-0">
-                <div className="flex flex-col items-center">
-                  <h2 className="text-2xl font-bold text-[#611DD0]">{postsCount}</h2>
-                  <p className="text-gray-600 font-medium">Posts</p>
+                  <button
+                    onClick={handleMessage}
+                    className="mt-2 ml-2 bg-[#611DD0] text-white px-4 py-2 rounded-full font-semibold shadow hover:bg-[#5000B9]"
+                  >
+                    Message
+                  </button>
                 </div>
-                <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
-                <div className="flex flex-col items-center">
-                  <h2 className="text-2xl font-bold text-[#611DD0]">{followers}</h2>
-                  <p className="text-gray-600 font-medium">Followers</p>
-                </div>
-                <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
-                <div className="flex flex-col items-center">
-                  <h2 className="text-2xl font-bold text-[#611DD0]">{following}</h2>
-                  <p className="text-gray-600 font-medium">Following</p>
-                </div>
+              )}
+            </div>
+            <div className="flex bg-white/70 backdrop-blur-md rounded-2xl shadow-lg px-10 py-6 gap-12 mt-6 md:mt-0">
+              <div className="flex flex-col items-center">
+                <h2 className="text-2xl font-bold text-[#611DD0]">{postsCount}</h2>
+                <p className="text-gray-600 font-medium">Posts</p>
+              </div>
+              <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
+              <div
+                className="flex flex-col items-center cursor-pointer"
+                onClick={() => handleShowConnections("followers")}
+              >
+                <h2 className="text-2xl font-bold text-[#611DD0]">{followersCount}</h2>
+                <p className="text-gray-600 font-medium">Followers</p>
+              </div>
+              <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
+              <div
+                className="flex flex-col items-center cursor-pointer"
+                onClick={() => handleShowConnections("following")}
+              >
+                <h2 className="text-2xl font-bold text-[#611DD0]">{followingCount}</h2>
+                <p className="text-gray-600 font-medium">Following</p>
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="mb-12 text-center">
-          <h3 className="text-[21px] flex items-center justify-center gap-2 font-semibold mb-2 text-[#6B46C1] highlight-haven-title">
-            Highlight Haven{" "}
-            {
-              <p className="text-sm pt-3 mt-1 mb-4 text-[#A0AEC0]">
-                (Showcase Your Stories)
-              </p>
-            }
-          </h3>
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide">
-            <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
-              <img
-                src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMHx8fGVufDB8fHx8fA%3D%3D"
-                alt="Travel Scene"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
-                Travel
-              </div>
-            </div>
-            <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
-              <img
-                src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8Zm9vZHxlbnwwfHwwfHx8MA%3D%3D"
-                alt="Food"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
-                Food
-              </div>
-            </div>
-            <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
-              <img
-                src="https://images.unsplash.com/photo-1595675024853-0f3ec9098ac7?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fGNvZGluZ3xlbnwwfHwwfHx8MA%3D%3D"
-                alt="Code"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
-                Coding
-              </div>
-            </div>
-            <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
-              <img
-                src="https://images.pexels.com/photos/27355586/pexels-photo-27355586/free-photo-of-daniel-1.jpeg?auto=compress&cs=tinysrgb&w=600"
-                alt="Myself"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
-                Myself
-              </div>
-            </div>
-            <div
-              className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10 cursor-pointer"
-              onClick={() => alert("Add new highlight!")}
-            >
-              <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                <span className="text-6xl text-[#611DD0]">+</span>
-              </div>
-              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-[#611DD0] text-3xl font-cursive italic">
-                Add
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-6 mb-6">
-          <div className="flex-1">
-            <h3 className="text-[1.1rem] font-semibold text-[#611DD0]">
-              What Your Vibe Says About You
-            </h3>
-            <p className="text-gray-900">{vibeDescription}</p>
-            <button className="mt-2 font-['Nunito'] bg-[#582BBB] text-white px-4 py-2 rounded-full">
-              <i>
-                <b>{vibe}</b>
-              </i>
-            </button>
-          </div>
-          <div className="flex-1">
-            <h3 className="text-[1.1rem] text-[#1438A6] font-semibold">
-              About Me (Bio)
-            </h3>
-            <p className="text-gray-900">{aboutMe}</p>
-          </div>
-        </div>
-
-        <div className="mb-6">
-          <div className="flex justify-between mb-2">
-            <h3 className="text-xl text-black font-bold">{postsCount} Vibes ✨</h3>
-            <h3 className="text-xl font-semibold">Highlighted</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <img
-              src="https://images.unsplash.com/photo-1741732311586-6ea6d620f214?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxMnx8fGVufDB8fHx8fA%3D%3D"
-              alt="Vibe 3"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://images.unsplash.com/photo-1722971380810-a4f29b2efc36?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMnx8fGVufDB8fHx8fA%3D%3D"
-              alt="Vibe 2"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMHx8fGVufDB8fHx8fA%3D%3D"
-              alt="Vibe 1"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://plus.unsplash.com/premium_photo-1746194532300-3417b645aeda?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxNjR8fHxlbnwwfHx8fHw%3D"
-              alt="Vibe 4"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://plus.unsplash.com/premium_photo-1672363353911-debc1fc593cb?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxODR8fHxlbnwwfHx8fHw%3D"
-              alt="Vibe 5"
-              className="w-full h-80 object-cover rounded-lg"
-            />
           </div>
         </div>
       </div>
-      {!userId && (
-        <div className="absolute left-250 top-10">
-          <MoodMaker />
+
+      {/* Rest of the profile content remains unchanged */}
+      <div className="mb-12 text-center">
+        <h3 className="text-[21px] flex items-center justify-center gap-2 font-semibold mb-2 text-[#6B46C1] highlight-haven-title">
+          Highlight Haven{" "}
+          {<p className="text-sm pt-3 mt-1 mb-4 text-[#A0AEC0]">(Showcase Your Stories)</p>}
+        </h3>
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide">
+          <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
+            <img
+              src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMHx8fGVufDB8fHx8fA%3D%3D"
+              alt="Travel Scene"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
+              Travel
+            </div>
+          </div>
+          <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
+            <img
+              src="https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8Zm9vZHxlbnwwfHwwfHx8MA%3D%3D"
+              alt="Food"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
+              Food
+            </div>
+          </div>
+          <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
+            <img
+              src="https://images.unsplash.com/photo-1595675024853-0f3ec9098ac7?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fGNvZGluZ3xlbnwwfHwwfHx8MA%3D%3D"
+              alt="Code"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
+              Coding
+            </div>
+          </div>
+          <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
+            <img
+              src="https://images.pexels.com/photos/27355586/pexels-photo-27355586/free-photo-of-daniel-1.jpeg?auto=compress&cs=tinysrgb&w=600"
+              alt="Myself"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-3xl font-cursive italic">
+              Myself
+            </div>
+          </div>
+          <div
+            className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10 cursor-pointer"
+            onClick={() => alert("Add new highlight!")}
+          >
+            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+              <span className="text-6xl text-[#611DD0]">+</span>
+            </div>
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-[#611DD0] text-3xl font-cursive italic">
+              Add
+            </div>
+          </div>
         </div>
-      )}
+      </div>
+
+      <div className="flex gap-6 mb-6">
+        <div className="flex-1">
+          <h3 className="text-[1.1rem] font-semibold text-[#611DD0]">
+            What Your Vibe Says About You
+          </h3>
+          <p className="text-gray-900">{vibeDescription}</p>
+          <button className="mt-2 font-['Nunito'] bg-[#611DD0] text-white px-4 py-2 rounded-full hover:bg-[#5000B9]">
+            <i>
+              <b>{vibe}</b>
+            </i>
+          </button>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-[1.1rem] text-[#1438A6] font-semibold">
+            About Me (Bio)
+          </h3>
+          <p className="text-gray-900">{aboutMe}</p>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="flex justify-between mb-2">
+          <h3 className="text-xl text-black font-bold">{postsCount} Vibes ✨</h3>
+          <h3 className="text-xl font-semibold">Highlighted</h3>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <img
+            src="https://images.unsplash.com/photo-1741732311586-6ea6d620f214?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxMnx8fGVufDB8fHx8fA%3D%3D"
+            alt="Vibe 3"
+            className="w-full h-80 object-cover rounded-lg"
+          />
+          <img
+            src="https://images.unsplash.com/photo-1722971380810-a4f29b2efc36?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMnx8fGVufDB8fHx8fA%3D%3D"
+            alt="Vibe 2"
+            className="w-full h-80 object-cover rounded-lg"
+          />
+          <img
+            src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMHx8fGVufDB8fHx8fA%3D%3D"
+            alt="Vibe 1"
+            className="w-full h-80 object-cover rounded-lg"
+          />
+          <img
+            src="https://plus.unsplash.com/premium_photo-1746194532300-3417b645aeda?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxNjR8fHxlbnwwfHx8fHw%3D"
+            alt="Vibe 4"
+            className="w-full h-80 object-cover rounded-lg"
+          />
+          <img
+            src="https://plus.unsplash.com/premium_photo-1672363353911-debc1fc593cb?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxODR8fHxlbnwwfHx8fHw%3D"
+            alt="Vibe 5"
+            className="w-full h-80 object-cover rounded-lg"
+          />
+        </div>
+      </div>
     </div>
-  );
+    {!userId && (
+      <div className="absolute left-250 top-10">
+        <MoodMaker />
+      </div>
+    )}
+
+  {isLoading && <Loader />}
+
+    {/* Modal for Followers or Following */}
+  {showModal && (
+  <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white w-[800px] relative rounded-lg p-6 max-h-[80vh] overflow-y-auto animate-slide-in">
+      <h2 className="text-xl font-bold mb-4">
+        {showModal === "followers" ? "Followers" : "Following"} ({showModal === "followers" ? followersCount : followingCount})
+      </h2>
+      <div className="space-y-4">
+        {showModal === 'followers' && followersList.length === 0 && (
+          <p className="text-gray-700 text-center">No Followers Yet.</p>
+        )}
+        {showModal === 'following' && followingList.length === 0 && (
+          <p className="text-gray-700 text-center">No Following Yet.</p>
+        )}
+ {(showModal === "followers" ? followersList : followingList).map((user) => (
+  <div
+    key={user._id}
+    className="flex items-center justify-between p-2 bg-gray-100 rounded-lg"
+  >
+    <div 
+      className="flex items-center" 
+      onClick={() => {
+        setShowModal(null);
+        if (user._id === loggedInUserId || user.username === currentUsername) {
+          navigate('/profile');
+        } else {
+          navigate(`/profile/${user._id}`);
+        }
+      }}
+    >
+      <img
+        src={user.profilePicture || defaultAvatar}
+        alt={user.username}
+        className="w-12 h-12 rounded-full mr-4"
+      />
+      <div className="cursor-pointer">
+        <p className="font-semibold">{user.fullname}</p>
+        <p className="text-gray-700">@{user.username}</p>
+      </div>
+    </div>
+
+    {/* ✅ Show buttons only if viewing own profile */}
+    {!userId && (
+      <>
+        {showModal === "followers" ? (
+          <button
+            onClick={() => setShowRemoveConfirm(user._id)}
+            className="bg-red-500 text-white px-3 py-1 rounded-full hover:bg-red-600"
+          >
+            Remove
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowUnfollowConfirm(user._id)}
+            className="bg-[#611DD0] text-white px-3 py-1 rounded-full hover:bg-[#5000B9] transition"
+          >
+            Following
+          </button>
+        )}
+      </>
+    )}
+  </div>
+))}
+
+
+      </div>
+      <button
+        onClick={handleCloseModal}
+        className="absolute top-2 right-0 text-black px-6 py-4 rounded-full"
+      >
+        <FaWindowClose size={25} />
+      </button>
+    </div>
+  </div>
+)}
+    {/* Remove Confirmation Div */}
+    {showRemoveConfirm && (
+      <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-1/3 text-center animate-slide-in">
+          <h2 className="text-xl font-bold mb-4">Remove Follower?</h2>
+          <p className="mb-4">Are you sure you want to remove this follower?</p>
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => handleUnfollow(showRemoveConfirm, "removeFollower")}
+              className="bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600"
+            >
+              Remove
+            </button>
+            <button
+              onClick={() => setShowRemoveConfirm(null)}
+              className="bg-[#611DD0] text-white px-4 py-2 rounded-full hover:bg-[#5000B9]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Unfollow Confirmation Div */}
+    {showUnfollowConfirm && (
+      <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 w-1/3 text-center animate-slide-in">
+          <h2 className="text-xl font-bold mb-4">Unfollow User?</h2>
+          <p className="mb-4">Are you sure you want to unfollow this user?</p>
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => handleUnfollow(showUnfollowConfirm)}
+              className="bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600"
+            >
+              Unfollow
+            </button>
+            <button
+              onClick={() => setShowUnfollowConfirm(null)}
+              className="bg-[#611DD0] text-white px-4 py-2 rounded-full hover:bg-[#5000B9]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);
 };
 
 export default UserProfile;

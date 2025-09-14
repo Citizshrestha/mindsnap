@@ -1,13 +1,13 @@
 import { FiBell, FiHome, FiSearch } from "react-icons/fi";
 import { MdPerson3, MdPersonAdd } from "react-icons/md";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { toast } from "react-toastify";
 import { useSelector, useDispatch } from "react-redux";
 import { setProfilePicture, setUsername } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
-
+import Loader from "../Loader"
 // Import images
 import logoImg from "../../../public/images/mindsnap logo.png";
 import settingImg from "../../../public/images/settings.png";
@@ -46,48 +46,61 @@ interface SearchUser {
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation(); // Track current route
+  const location = useLocation(); 
   const dispatch = useDispatch<AppDispatch>();
-  const { profilePicture, username: currentUsername } = useSelector(
+  const { username: currentUsername,  } = useSelector(
     (state: RootState) => state.user
   );
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [initialLoading, setInitialLoading] = useState<boolean>(true); // New loading state for initial fetch
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [activeLink, setActiveLink] = useState<string | null>(null); // Track active link
+  const [activeLink, setActiveLink] = useState<string | null>(null);
+  const [loggedInProfilePicture, setLoggedInProfilePicture] = useState<string | null>(
+    localStorage.getItem("profilePicture") || null
+  );
+  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(
+    localStorage.getItem("username") || null
+  );
 
-  // Fetch user profile if not already in Redux
+  // Fetch user profile on mount
   useEffect(() => {
     const fetchUserData = async () => {
-      if (!currentUsername) {
-        try {
-          const token = localStorage.getItem("accessToken");
-          if (!token) {
-            setError("No token available");
-            toast.error("Please log in to continue.");
-            return;
-          }
-
-          const response: UserProfileResponse = await axiosClient.get(
-            "/api/users/profile"
-          );
-          dispatch(setUsername(response.data.username));
-          if (response.data.profilePicture) {
-            dispatch(setProfilePicture(response.data.profilePicture));
-          }
-        } catch (err) {
-          const message =
-            err instanceof Error ? err.message : "Failed to fetch user data";
-          setError(message);
-          toast.error(`Error: ${message}`);
+      setInitialLoading(true);
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) {
+          setError("No token available");
+          toast.error("Please log in to continue.");
+          setInitialLoading(false);
+          return;
         }
+
+        const response: UserProfileResponse = await axiosClient.get(
+          "/api/users/profile"
+        );
+        dispatch(setUsername(response.data.username));
+        if (response.data.profilePicture) {
+          dispatch(setProfilePicture(response.data.profilePicture));
+          setLoggedInProfilePicture(response.data.profilePicture);
+          localStorage.setItem("profilePicture", response.data.profilePicture);
+        }
+        setLoggedInUsername(response.data.username);
+        localStorage.setItem("username", response.data.username);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch user data";
+        setError(message);
+        toast.error(`Error: ${message}`);
+      } finally {
+        setInitialLoading(false);
       }
     };
     fetchUserData();
-  }, [currentUsername, dispatch]);
+  }, [dispatch]);
 
   // Handle profile picture upload
   const handleImageUpload = async (
@@ -137,6 +150,7 @@ const Header: React.FC = () => {
 
       if (updateResp.data.success) {
         dispatch(setProfilePicture(data.secure_url));
+        setLoggedInProfilePicture(data.secure_url);
         localStorage.setItem("profilePicture", data.secure_url);
         toast.success("Profile Picture Updated Successfully");
       } else {
@@ -152,7 +166,7 @@ const Header: React.FC = () => {
     }
   };
 
-  const transformedUrl: string = profilePicture || defaultAvatar;
+  const transformedUrl: string = loggedInProfilePicture || defaultAvatar;
 
   // Handle search
   const handleSearch = async (query: string) => {
@@ -184,6 +198,7 @@ const Header: React.FC = () => {
 
   // Navigate to profile
   const handleProfileClick = (user: SearchUser) => {
+    setSearchQuery("");
     if (user.username === currentUsername) {
       navigate("/profile");
     } else {
@@ -232,10 +247,10 @@ const Header: React.FC = () => {
       {/* Navigation */}
       <div className="Nav_Link flex items-center justify-between absolute left-80">
         {/* Home */}
-        <a
+        <Link
           onClick={() => navigate("/home")}
           className="link text-white flex mt-4 mx-2 items-center"
-          href="/home"
+          to="/home"
           style={
             {
               "--underline-color": "#FFF0F5",
@@ -273,12 +288,12 @@ const Header: React.FC = () => {
               }}
             />
           )}
-        </a>
+        </Link>
 
         {/* Profile */}
-        <a
+        <Link
           onClick={() => navigate("/profile")}
-          href="/profile"
+          to="/profile"
           className="link text-white flex mt-4 mx-2 items-center"
           style={
             {
@@ -317,12 +332,12 @@ const Header: React.FC = () => {
               }}
             />
           )}
-        </a>
+        </Link>
 
         {/* Explore */}
-        <a
+        <Link
           onClick={() => navigate("/explore")}
-          href="/explore"
+          to="/explore"
           className="link rocketLink text-white flex mt-4 mx-2 items-center"
           style={
             {
@@ -362,12 +377,12 @@ const Header: React.FC = () => {
               }}
             />
           )}
-        </a>
+        </Link>
 
         {/* Connections */}
-        <a
+        <Link
           onClick={() => navigate("/connections")}
-          href="/connections"
+          to="/connections"
           className="link text-white flex mt-4 mx-2 items-center"
           style={
             {
@@ -406,7 +421,7 @@ const Header: React.FC = () => {
               }}
             />
           )}
-        </a>
+        </Link>
       </div>
 
       {/* Search */}
@@ -447,7 +462,7 @@ const Header: React.FC = () => {
                       <p className="text-sm text-gray-800 font-stretch-normal">{user.fullname}</p>
                       {user.fullname && (
                         <p className="text-xs text-gray-600">
-                          {user.username}
+                          @{user.username}
                         </p>
                       )}
                     </div>
@@ -477,10 +492,8 @@ const Header: React.FC = () => {
         />
         <div className="profileContainer flex flex-col items-center">
           <div className="relative">
-            {loading ? (
-              <div className="h-12 w-12 rounded-full bg-gray-300 flex items-center justify-center text-gray-600">
-                Loading...
-              </div>
+            {loading || initialLoading ? (
+                 <Loader />
             ) : (
               <img
                 className="h-12 w-12 rounded-full object-cover"
@@ -494,12 +507,12 @@ const Header: React.FC = () => {
               accept="image/*"
               onChange={handleImageUpload}
               className="absolute top-0 left-0 h-12 w-12 opacity-0 cursor-pointer"
-              disabled={loading}
+              disabled={loading || initialLoading}
               title="Upload Profile Picture"
             />
           </div>
           <h3 className="text-sm font-medium">
-            {currentUsername || "Loading..."}
+            {loggedInUsername || (initialLoading ? "Loading..." : "User")}
           </h3>
         </div>
       </div>

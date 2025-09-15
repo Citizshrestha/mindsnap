@@ -1,36 +1,42 @@
-// controllers/conversationController.js
 import { asyncHandler } from "../utils/asyncHandler.js";
-import {Conversation} from "../models/conversation.models.js";
-// import User from "../models/user.models.js";
+import { Conversation } from "../models/conversation.models.js";
 
-// Create or get a conversation between two users
 export const createOrGetConversation = asyncHandler(async (req, res) => {
-  const { participantId } = req.body; // ID of the other user
-  const currentUserId = req.user._id;
+  const { participantIds, isGroup, groupName } = req.body;
+  const senderId = req.user._id;
 
-  if (!participantId || participantId === currentUserId.toString()) {
+  if (!participantIds || !Array.isArray(participantIds)) {
     res.status(400);
-    throw new Error("Invalid participant ID");
+    throw new Error("Participant IDs are required as an array");
   }
 
-  let conversation = await Conversation.findOne({
-    participants: { $all: [currentUserId, participantId] },
-  }).populate("lastMessage");
+  const participants = [...new Set([senderId, ...participantIds])];
 
-  if (!conversation) {
-    conversation = await Conversation.create({
-      participants: [currentUserId, participantId],
-    });
+  if (!isGroup) {
+    const existingConversation = await Conversation.findOne({
+      isGroup: false,
+      participants: { $all: participants, $size: 2 },
+    }).populate("lastMessage");
+    if (existingConversation) {
+      return res.status(200).json({ success: true, conversation: existingConversation });
+    }
   }
 
-  res.status(200).json(conversation);
+  const conversation = await Conversation.create({
+    participants,
+    isGroup: isGroup || false,
+    groupName: isGroup ? groupName : null,
+    groupAdmins: isGroup ? [senderId] : [],
+    updatedAt: new Date(),
+  });
+
+  res.status(201).json({ success: true, conversation });
 });
 
-// Get all conversations for the authenticated user
 export const getConversations = asyncHandler(async (req, res) => {
   const conversations = await Conversation.find({
     participants: req.user._id,
   }).populate("lastMessage");
 
-  res.json(conversations);
+  res.json({ success: true, conversations });
 });

@@ -3,6 +3,7 @@ import { createSlice } from "@reduxjs/toolkit";
 import type { PayloadAction } from "@reduxjs/toolkit";
 
 interface UserState {
+  _id: string; 
   profilePicture: string;
   username: string;
   gender: string;
@@ -14,6 +15,7 @@ interface UserState {
 }
 
 const initialState: UserState = {
+  _id: localStorage.getItem("userId") || "",
   profilePicture: localStorage.getItem("profilePicture") || "",
   username: localStorage.getItem("username") || "Guest",
   gender: localStorage.getItem("gender") || "None",
@@ -60,6 +62,10 @@ const userSlice = createSlice({
       state.aboutMe = action.payload;
       localStorage.setItem("aboutMe", action.payload);
     },
+    setUserId: (state, action: PayloadAction<string>) => { 
+      state._id = action.payload;
+      localStorage.setItem("userId", action.payload);
+    },
     setUserProfile: (state, action: PayloadAction<Partial<UserState>>) => {
       Object.assign(state, action.payload);
       Object.entries(action.payload).forEach(([key, value]) => {
@@ -69,5 +75,5 @@ const userSlice = createSlice({
   },
 });
 
-export const { setProfilePicture, setUsername, setGender, setVibe, setFullName, setDob, setVibeDescription, setAboutMe, setUserProfile } = userSlice.actions;
+export const { setProfilePicture, setUsername, setGender, setVibe, setFullName, setDob, setVibeDescription, setAboutMe, setUserId, setUserProfile } = userSlice.actions;
 export default userSlice.reducer;

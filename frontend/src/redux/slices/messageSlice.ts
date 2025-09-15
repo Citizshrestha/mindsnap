@@ -1,3 +1,4 @@
+// src/redux/slices/messageSlice.ts
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 
@@ -10,13 +11,7 @@ interface MessageState {
 const initialState: MessageState = {
   activeChat: null,
   currentConversationId: null,
-  conversations: {
-    // Hardcoded for now; replace with dynamic data later
-    "Nocys": "conv1",
-    "Abisha Karki": "conv2",
-    "Manish Bhatta": "conv3",
-    "Marshal Chaudhary": "conv4",
-  },
+  conversations: {}, // Initialize as empty, populate dynamically
 };
 
 const messageSlice = createSlice({

@@ -1,11 +1,10 @@
-// src/slices/messageSlice.ts
 import { createSlice } from '@reduxjs/toolkit';
 import type { PayloadAction } from '@reduxjs/toolkit';
 
 interface MessageState {
-  activeChat: string | null; // Username of the active chat
+  activeChat: string | null; // Username or group name
   currentConversationId: string | null; // ID from backend
-  conversations: { [key: string]: string }; // Map username to conversationId
+  conversations: { [key: string]: string }; // Map username/group name to conversationId
 }
 
 const initialState: MessageState = {
@@ -13,9 +12,10 @@ const initialState: MessageState = {
   currentConversationId: null,
   conversations: {
     // Hardcoded for now; replace with dynamic data later
-    Citiz: '688db1bfe25f2958b5329fe0',
-    Sycon: '688e38f86097c017e18a23b0',
-  
+    "Nocys": "conv1",
+    "Abisha Karki": "conv2",
+    "Manish Bhatta": "conv3",
+    "Marshal Chaudhary": "conv4",
   },
 };
 
@@ -27,11 +27,14 @@ const messageSlice = createSlice({
       state.activeChat = action.payload;
       state.currentConversationId = state.conversations[action.payload] || null;
     },
+    setCurrentConversationId: (state, action: PayloadAction<string | null>) => {
+      state.currentConversationId = action.payload;
+    },
     setConversationMap: (state, action: PayloadAction<{ [key: string]: string }>) => {
       state.conversations = action.payload;
     },
   },
 });
 
-export const { setActiveChat, setConversationMap } = messageSlice.actions;
+export const { setActiveChat, setCurrentConversationId, setConversationMap } = messageSlice.actions;
 export default messageSlice.reducer;

@@ -7,11 +7,10 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false, // Not required for group chats
     },
     content: {
       type: String,
@@ -19,7 +18,7 @@ const messageSchema = new mongoose.Schema(
     },
     messageType: {
       type: String,
-      enum: ['text','image','video','file','audio','system'],
+      enum: ["text", "image", "video", "file", "audio", "system"],
       default: "text",
     },
     mediaUrl: {
@@ -43,6 +42,27 @@ const messageSchema = new mongoose.Schema(
     forwardedFrom: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
+    },
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null, // For replying to specific messages
+    },
+    reactions: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        reaction: {
+          type: String, // e.g., "👍", "❤️"
+          required: true,
+        },
+      },
+    ],
+    isPinned: {
+      type: Boolean,
+      default: false, // For pinning important messages
     },
     isDeleted: {
       type: Boolean,

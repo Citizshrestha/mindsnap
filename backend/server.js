@@ -32,8 +32,8 @@ app.use(cookieParser());
 
 // COEP & COOP for cross-origin resources (Cloudinary images/videos)
 app.use((req, res, next) => {
-  res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
   next();
 });
 
@@ -106,21 +106,59 @@ io.on('connection', (socket) => {
   });
 
   // When message is sent - emit to room
-  socket.on('sendMessage', (messageData) => {
-    // Validate messageData structure
-    if (!messageData.conversationId || !messageData.message) {
+socket.on('sendMessage', async (messageData) => {
+    const { conversationId, message } = messageData;
+    if (!conversationId || !message) {
       console.error('Invalid message data structure');
       return;
     }
 
-    // Broadcast to everyone in the conversation room including sender
-    io.to(messageData.conversationId).emit('newMessage', {
-      ...messageData,
-      timestamp: new Date(),
-      socketId: socket.id // Include sender's socket ID for reference
-    });
+    try {
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        console.error('Conversation not found');
+        return;
+      }
 
-    console.log(`Message sent to conversation: ${messageData.conversationId}`);
+      // Save message to database
+      const newMessage = await Message.create({
+        sender: message.sender._id,
+        receiver: conversation.isGroup ? null : message.receiver,
+        content: message.content,
+        messageType: message.messageType || "text",
+        mediaUrl: message.mediaUrl,
+        fileName: message.fileName,
+        fileSize: message.fileSize,
+        conversation: conversationId,
+        status: "sent",
+        replyTo: message.replyTo || null,
+      });
+
+      const populatedMessage = await Message.findById(newMessage._id)
+        .populate("sender", "username profilePicture")
+        .populate("replyTo", "content sender messageType")
+        .lean();
+
+      populatedMessage.content =
+        message.messageType === "text" ? decryptContent(populatedMessage.content) : populatedMessage.content;
+      if (populatedMessage.mediaUrl) {
+        populatedMessage.mediaUrl = populatedMessage.mediaUrl; // Already decrypted in controller
+      }
+      if (populatedMessage.replyTo && populatedMessage.replyTo.content) {
+        populatedMessage.replyTo.content =
+          populatedMessage.replyTo.messageType === "text"
+            ? decryptContent(populatedMessage.replyTo.content)
+            : populatedMessage.replyTo.content;
+      }
+
+      conversation.lastMessage = newMessage._id;
+      conversation.updatedAt = new Date();
+      await conversation.save();
+
+      io.to(conversationId).emit('newMessage', populatedMessage);
+    } catch (error) {
+      console.error('Error saving message:', error);
+    }
   });
 
   // Handle typing indicators

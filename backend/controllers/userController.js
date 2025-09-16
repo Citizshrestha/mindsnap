@@ -1,7 +1,10 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.models.js";
 import cloudinary from "../config/cloudinary.js";
-import mongoose from "mongoose"; // Added: Import mongoose for ObjectId conversion
+import mongoose from "mongoose";
+import { emitNotification } from "../server.js"; 
+import { Notification } from "../models/notification.models.js";
+
 
 // @route GET /api/users/profile
 export const getUserProfileInfo = asyncHandler(async (req, res) => {
@@ -32,7 +35,6 @@ export const getUserProfileInfo = asyncHandler(async (req, res) => {
 
 // @route PATCH /api/users/update-profile
 export const updateUserProfile = asyncHandler(async (req, res) => {
-  
   const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture } = req.body;
 
   const user = await User.findById(req.user._id);
@@ -51,7 +53,6 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
   if (vibeDescription !== undefined) user.vibeDescription = vibeDescription;
   if (aboutMe !== undefined) user.aboutMe = aboutMe;
 
-  // Only update profile picture if a new one is provided
   if (profilePicture !== undefined && profilePicture !== user.profilePicture) {
     if (user.profilePicture) {
       const publicId = user.profilePicture.split("/").pop()?.split(".")[0];
@@ -108,19 +109,16 @@ export const searchUsers = asyncHandler(async (req, res) => {
   if (!query) return res.json([]);
 
   const users = await User.find({
-    username: { $regex: query, $options: "i" } // case-insensitive
+    username: { $regex: query, $options: "i" }
   }).select("username fullname profilePicture followers following");
 
-  // Map to indicate if current user is following each result
-  const results = users.map(user => {
-    return {
-      _id: user._id,
-      username: user.username,
-      fullname: user.fullname,
-      profilePicture: user.profilePicture,
-      isFollowing: user.followers.includes(req.user._id),
-    };
-  });
+  const results = users.map(user => ({
+    _id: user._id,
+    username: user.username,
+    fullname: user.fullname,
+    profilePicture: user.profilePicture,
+    isFollowing: user.followers.includes(req.user._id),
+  }));
 
   res.status(200).json(results);
 });
@@ -151,44 +149,155 @@ export const getUserById = asyncHandler(async (req, res) => {
     postsCount: user.postsCount,
     followers: user.followers.length,
     following: user.following.length,
-    isFollowing: user.followers.includes(req.user._id), // Indicate if current user follows this user
+    isFollowing: user.followers.includes(req.user._id),
   });
 });
 
 // @route POST /api/users/:id/follow
 export const followUser = asyncHandler(async (req, res) => {
-  const targetIdStr = req.params.id; // Added: Extract string ID from params
-  const targetId = new mongoose.Types.ObjectId(targetIdStr); // Added: Convert to ObjectId for consistency
+  const targetIdStr = req.params.id;
+  const targetId = new mongoose.Types.ObjectId(targetIdStr);
   const userId = req.user._id;
 
   if (userId.toString() === targetIdStr) {
     return res.status(400).json({ success: false, message: "You cannot follow yourself" });
   }
 
-  const targetUser = await User.findById(targetId);
-  const currentUser = await User.findById(userId);
+  const targetUser = await User.findById(targetId).select("username followers following");
+  const currentUser = await User.findById(userId).select("username followers following");
 
   if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
 
-  // Added: Convert userId to ObjectId for includes check
   const userIdObj = new mongoose.Types.ObjectId(userId);
-  if (!currentUser.following.some(id => id.equals(targetId))) { // Added: Use equals() for ObjectId comparison instead of includes with string
+
+  // Check if already following
+  const isAlreadyFollowing = currentUser.following.some((id) => id.equals(targetId));
+  
+  if (!isAlreadyFollowing) {
     currentUser.following.push(targetId);
     targetUser.followers.push(userIdObj);
 
     await currentUser.save();
     await targetUser.save();
-  }
 
-  res.status(200).json({ 
-    success: true, 
-    message: "Followed successfully",
-    followers: targetUser.followers.length,
-    following: currentUser.following.length,
-    isFollowing: true,
-  });
+    // ✅ Create and emit follow notification with action button
+    try {
+      const notification = await Notification.create({
+        sender: userId, // Use sender instead of senderId
+        recipient: targetId,
+        type: "follow",
+        message: `${currentUser.username} started following you`,
+        targetType: "Profile",
+        targetId: userId, // The profile to view when clicking notification
+        action: "follow_back" // Add action for follow back button
+      });
+
+      console.log("Follow notification created:", notification);
+      
+      // Populate sender info before emitting
+      const populatedNotification = await Notification.findById(notification._id)
+        .populate("sender", "username profilePicture")
+        .lean();
+      
+      emitNotification(targetId.toString(), populatedNotification);
+      console.log("Notification emitted to:", targetId.toString());
+
+    } catch (err) {
+      console.error("Failed to create follow notification:", err);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Followed successfully",
+      followers: targetUser.followers.length,
+      following: currentUser.following.length,
+      isFollowing: true,
+    });
+  } else {
+    res.status(400).json({
+      success: false,
+      message: "Already following this user",
+      isFollowing: true,
+    });
+  }
 });
 
+// @route POST /api/users/:id/follow-back
+export const followBackUser = asyncHandler(async (req, res) => {
+  const targetIdStr = req.params.id;
+  const targetId = new mongoose.Types.ObjectId(targetIdStr);
+  const userId = req.user._id;
+
+  if (userId.toString() === targetIdStr) {
+    return res.status(400).json({ success: false, message: "You cannot follow yourself" });
+  }
+
+  const targetUser = await User.findById(targetId).select("username followers following");
+  const currentUser = await User.findById(userId).select("username followers following");
+
+  if (!targetUser) return res.status(404).json({ success: false, message: "User not found" });
+
+  const userIdObj = new mongoose.Types.ObjectId(userId);
+  const targetIdObj = new mongoose.Types.ObjectId(targetId);
+
+  // Check if not already following
+  if (!currentUser.following.some((id) => id.equals(targetId))) {
+    currentUser.following.push(targetId);
+    targetUser.followers.push(userIdObj);
+    await currentUser.save();
+    await targetUser.save();
+
+    // ✅ Create and emit follow_back notification
+    try {
+      const notification = await Notification.create({
+        sender: userId,
+        recipient: targetId,
+        type: "follow_back",
+        message: `${currentUser.username} followed you back`,
+        targetType: "Profile",
+        targetId: userId,
+      });
+
+      console.log("Follow-back notification created:", notification);
+      
+      // Populate sender info before emitting
+      const populatedNotification = await Notification.findById(notification._id)
+        .populate("sender", "username profilePicture")
+        .lean();
+      
+      emitNotification(targetId.toString(), populatedNotification);
+console.log("Follow-back notification emitted to:", targetId.toString());
+
+      // Update existing follow notification to reflect isFollowing status
+      const followNotification = await Notification.findOneAndUpdate(
+        { recipient: targetId, sender: userId, type: "follow" },
+        { $set: { isFollowing: true } },
+        { new: true }
+      ).populate("sender", "username profilePicture").lean();
+
+      if (followNotification) {
+        emitNotification(targetId.toString(), followNotification);
+        console.log("Updated follow notification emitted to:", targetId.toString());
+      }
+
+    } catch (err) {
+      console.error("Failed to create follow-back notification:", err);
+    }
+    res.status(200).json({
+      success: true,
+      message: "Followed back successfully",
+      followers: targetUser.followers.length,
+      following: currentUser.following.length,
+      isFollowing: true,
+    });
+  } else {
+    res.status(400).json({
+      success: false,
+      message: "Already following this user",
+      isFollowing: true,
+    });
+  }
+});
 // @route POST /api/users/:id/unfollow
 export const unfollowUser = asyncHandler(async (req, res) => {
   const targetId = req.params.id;
@@ -205,10 +314,8 @@ export const unfollowUser = asyncHandler(async (req, res) => {
   let updated = false;
 
   if (action === "removeFollower") {
-    // Remove targetUser from currentUser's followers
     const beforeFollowers = currentUser.followers.length;
     currentUser.followers = currentUser.followers.filter(id => id.toString() !== targetId.toString());
-    // Also remove currentUser from targetUser's following
     targetUser.following = targetUser.following.filter(id => id.toString() !== userId.toString());
 
     updated = beforeFollowers !== currentUser.followers.length;
@@ -216,10 +323,8 @@ export const unfollowUser = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: "This user is not your follower" });
     }
   } else {
-    // Unfollow: remove target from currentUser's following
     const beforeFollowing = currentUser.following.length;
     currentUser.following = currentUser.following.filter(id => id.toString() !== targetId.toString());
-    // Remove currentUser from targetUser's followers
     targetUser.followers = targetUser.followers.filter(id => id.toString() !== userId.toString());
 
     updated = beforeFollowing !== currentUser.following.length;
@@ -240,11 +345,10 @@ export const unfollowUser = asyncHandler(async (req, res) => {
   });
 });
 
-
 // @route GET /api/users/:userId/connections
 export const getUserConnections = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const { type } = req.query; // 'followers' or 'following'
+  const { type } = req.query;
 
   if (!type || !['followers', 'following'].includes(type.toString())) {
     return res.status(400).json({
@@ -253,7 +357,6 @@ export const getUserConnections = asyncHandler(async (req, res) => {
     });
   }
 
-  // Use logged-in user's ID if no userId is provided (e.g., for /api/users/profile/connections)
   const targetUserId = userId ? userId : req.user._id;
 
   try {
@@ -269,7 +372,6 @@ export const getUserConnections = asyncHandler(async (req, res) => {
       });
     }
 
-    // Ensure the response matches the expected structure
     return res.status(200).json({
       success: true,
       [type]: user[type] || [],

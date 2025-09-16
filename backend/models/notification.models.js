@@ -1,4 +1,3 @@
-// models/notification.models.js
 import mongoose from "mongoose";
 
 const notificationSchema = new mongoose.Schema(
@@ -8,30 +7,43 @@ const notificationSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    sender: {
+    sender: { 
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
     type: {
       type: String,
-      enum: ["like", "comment", "follow", "tag", "message"],
+      enum: ["like", "comment", "follow", "tag", "message", "follow_back"],
       required: true,
+    },
+    message: { 
+      type: String,
+      required: true
     },
     targetType: {
       type: String,
-      enum: ["Post", "Comment", "Message", "Story"],
+      enum: ["Post", "Comment", "Profile", "Message", "Story"],
       required: true,
     },
     targetId: {
       type: mongoose.Schema.Types.ObjectId,
-      refPath: "targetType", // Dynamically references the target type (Post, Comment, etc.)
       required: true,
     },
     read: {
       type: Boolean,
       default: false,
     },
+    // Add action field for follow-back capability
+    action: {
+      type: String,
+      enum: ["follow_back", null],
+      default: null
+    },
+    isFollowing: {
+      type: Boolean,
+      default: false,  // added to track follow status
+    }
   },
   { timestamps: true }
 );

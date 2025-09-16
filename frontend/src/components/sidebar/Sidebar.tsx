@@ -1,25 +1,41 @@
+// src/components/Sidebar.tsx
 import React, { useState, useEffect } from "react";
 import { FaHome, FaEnvelope, FaPaintBrush, FaSignOutAlt } from "react-icons/fa";
 import { FiPlus } from "react-icons/fi";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./sidebar.css";
+import type { RootState } from "../../redux/store";
 
 import toyHome from "../../../public/images/toyhome.png";
 import createPost from "../../../public/images/CreatePosts.png";
 import messageImgIcon from "../../../public/images/messages.png";
 import themes from "../../../public/images/themes.png";
 import logout from "../../../public/images/logout.png";
-import { logout as performLogout } from "../../api/auth"; // Import the logout function
+import { logout as performLogout } from "../../api/auth";
+import { useSelector } from "react-redux";
+import contacts from "../../../public/images/contacts.png"
+import pendingRequest from "../../../public/images/friend request.png"
 
 const Sidebar = () => {
   const [imgErr, setImgErr] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [tooltip, setTooltip] = useState<{
+    text: string;
+    top: number;
+    left: number;
+  } | null>(null);
+
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Redux user data
+  const { profilePicture, fullname, username } = useSelector(
+    (state: RootState) => state.user
+  );
+
   useEffect(() => {
     if (location.pathname === "/messages") {
-      setIsCollapsed(true); 
+      setIsCollapsed(true);
     }
   }, [location.pathname]);
 
@@ -37,6 +53,18 @@ const Sidebar = () => {
     flexDirection: "column",
     alignItems: isCollapsed ? "center" : "flex-start",
     transition: "width 0.3s ease",
+    overflowY: "auto",
+    scrollbarWidth: "none",
+  };
+
+  const profileStyle: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    padding: "10px",
+    borderBottom: "2px solid #F5F6FA",
+    marginBottom: "15px",
+    width: isCollapsed ? "50px" : "210px",
+    justifyContent: isCollapsed ? "center" : "flex-start",
   };
 
   const linkStyle = (path: string): React.CSSProperties => ({
@@ -53,63 +81,31 @@ const Sidebar = () => {
     fontSize: "16px",
     position: "relative",
     transition: "all 0.3s ease-in",
+    cursor: "pointer",
   });
 
-  const tooltipStyle: React.CSSProperties = {
-    position: "absolute",
-    top: "50%",
-    left: "100%",
-    transform: "translateY(-50%)",
-    background: "#fff",
-    color: "#611DD0",
-    padding: "5px 10px",
-    borderRadius: "5px",
-    whiteSpace: "nowrap",
-    boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-    marginLeft: "10px",
-    opacity: 0,
-    visibility: "hidden",
-    transition: "opacity 0.2s ease, visibility 0s linear 0.2s",
-    zIndex: 10,
+  const showTooltip = (e: React.MouseEvent<HTMLElement>, text: string) => {
+    if (!isCollapsed) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltip({
+      text,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 10,
+    });
   };
 
-  const showTooltip = (e: React.MouseEvent<HTMLElement>) => {
-    if (isCollapsed) {
-      const tooltip = e.currentTarget.querySelector(".tooltip") as HTMLElement | null;
-      if (tooltip) {
-        tooltip.style.opacity = "1";
-        tooltip.style.visibility = "visible";
-        tooltip.style.transition = "opacity 0.2s ease";
-      }
-    }
-  };
-
-  const hideTooltip = (e: React.MouseEvent<HTMLElement>) => {
-    if (isCollapsed) {
-      const tooltip = e.currentTarget.querySelector(".tooltip") as HTMLElement | null;
-      if (tooltip) {
-        tooltip.style.opacity = "0";
-        tooltip.style.visibility = "hidden";
-        tooltip.style.transition = "opacity 0.2s ease, visibility 0s linear 0.2s";
-      }
-    }
-  };
+  const hideTooltip = () => setTooltip(null);
 
   const handleLogout = async (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
     try {
       await performLogout();
-      // Additional cleanup to ensure no session data remains
-      localStorage.clear(); // Clears all localStorage items (use cautiously if other data is stored)
-      // Or specifically clear only session-related items
-      // localStorage.removeItem("accessToken");
-      // localStorage.removeItem("userId");
-      // localStorage.removeItem("userSession");
+      localStorage.clear();
       navigate("/");
-      window.location.reload(); // Force a full page reload to reset the app state
+      window.location.reload();
     } catch (error) {
       console.error("Logout failed:", error);
-      localStorage.clear(); // Fallback cleanup
+      localStorage.clear();
       navigate("/");
       window.location.reload();
     }
@@ -117,121 +113,259 @@ const Sidebar = () => {
 
   const handleNavigate = (path: string) => {
     if (path === "/messages") {
-      setIsCollapsed(true); 
+      setIsCollapsed(true);
     } else if (!isCollapsed && path !== location.pathname) {
-      setIsCollapsed(false); 
+      setIsCollapsed(false);
     }
     navigate(path);
   };
 
   return (
-    <div style={sidebarStyle}>
-      <a
-        href="/home"
-        style={linkStyle("/home")}
-        onClick={(e) => { e.preventDefault(); handleNavigate("/home"); }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        {imgErr ? (
-          <FaHome size={23.5} />
-        ) : (
-          <img src={toyHome} alt="Home Icon" onError={() => setImgErr(true)} style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }} />
-        )}
-        {!isCollapsed && "Home"}
-        {isCollapsed && <div className="tooltip" style={tooltipStyle}>Home</div>}
-      </a>
+    <>
+      <div style={sidebarStyle}>
+        {/* Profile Section */}
+        <div style={profileStyle}>
+          {imgErr ? (
+            <div
+              style={{
+                width: "40px",
+                height: "40px",
+                background: "#F5F6FA",
+                borderRadius: "50%",
+              }}
+            />
+          ) : (
+            <img
+              src={profilePicture || "https://via.placeholder.com/40"}
+              alt="Profile"
+              onError={() => setImgErr(true)}
+              style={{
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                marginRight: isCollapsed ? "0" : "10px",
+              }}
+            />
+          )}
+          {!isCollapsed && (
+            <div>
+              <div style={{ fontWeight: "bold" }}>{fullname || "No Name"}</div>
+              <div style={{ fontSize: "14px", color: "#F5F6FA" }}>
+                @{username || "No Username"}
+              </div>
+            </div>
+          )}
+        </div>
 
-      <a
-        href="/create-post"
-        style={linkStyle("/create-post")}
-        onClick={(e) => { e.preventDefault(); handleNavigate("/create-post"); }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        {imgErr ? (
-          <FiPlus size={24} />
-        ) : (
-          <img src={createPost} alt="+ Create Post" onError={() => setImgErr(true)} style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }} />
-        )}
-        {!isCollapsed && "Create Post"}
-        {isCollapsed && <div className="tooltip" style={tooltipStyle}>Create Post</div>}
-      </a>
+        {/* Links */}
+        <a
+          style={linkStyle("/home")}
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavigate("/home");
+          }}
+          onMouseEnter={(e) => showTooltip(e, "Home")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FaHome size={23.5} />
+          ) : (
+            <img
+              src={toyHome}
+              alt="Home"
+              style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }}
+            />
+          )}
+          {!isCollapsed && "Home"}
+        </a>
 
-      <a
-        href="/messages"
-        style={linkStyle("/messages")}
-        onClick={(e) => { e.preventDefault(); handleNavigate("/messages"); }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        {imgErr ? (
-          <FaEnvelope size={23.5} />
-        ) : (
-          <img src={messageImgIcon} alt="Messages" onError={() => setImgErr(true)} style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }} />
-        )}
-        {!isCollapsed && "Messages"}
-        {isCollapsed && <div className="tooltip" style={tooltipStyle}>Messages</div>}
-      </a>
+        <a
+          style={linkStyle("/create-post")}
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavigate("/create-post");
+          }}
+          onMouseEnter={(e) => showTooltip(e, "Create Post")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FiPlus size={24} />
+          ) : (
+            <img
+              src={createPost}
+              alt="+ Create Post"
+              style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }}
+            />
+          )}
+          {!isCollapsed && "Create Post"}
+        </a>
 
-      <a
-        href="/themes"
-        style={linkStyle("/themes")}
-        onClick={(e) => { e.preventDefault(); handleNavigate("/themes"); }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        {imgErr ? (
-          <FaPaintBrush size={25} />
-        ) : (
-          <img src={themes} alt="Themes" onError={() => setImgErr(true)} style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }} />
-        )}
-        {!isCollapsed && "Themes"}
-        {isCollapsed && <div className="tooltip" style={tooltipStyle}>Themes</div>}
-      </a>
+        <a
+          style={linkStyle("/messages")}
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavigate("/messages");
+          }}
+          onMouseEnter={(e) => showTooltip(e, "Messages")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FaEnvelope size={23.5} />
+          ) : (
+            <img
+              src={messageImgIcon}
+              alt="Messages"
+              style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }}
+            />
+          )}
+          {!isCollapsed && "Messages"}
+        </a>
 
-      <a
-        href="/logout"
-        style={{ ...linkStyle("/logout"), marginTop: "auto" }}
-        onClick={handleLogout}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-      >
-        {imgErr ? (
-          <FaSignOutAlt size={23.5} />
-        ) : (
-          <img src={logout} alt="Logout" onError={() => setImgErr(true)} style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }} />
-        )}
-        {!isCollapsed && "Logout"}
-        {isCollapsed && <div className="tooltip" style={tooltipStyle}>Logout</div>}
-      </a>
-
-      <button
-        onClick={() => {
-          if (location.pathname !== "/messages") {
-            setIsCollapsed(!isCollapsed);
+        <button
+          onClick={() => {
+            if (location.pathname !== "/messages") {
+              setIsCollapsed(!isCollapsed);
+            }
+          }}
+          style={{
+            marginTop: "15px",
+            background: "#F5F6FA",
+            border: "none",
+            borderRadius: "50%",
+            width: "40px",
+            height: "40px",
+            cursor:
+              location.pathname === "/messages" ? "not-allowed" : "pointer",
+            color: "#611DD0",
+            alignSelf: "center",
+            opacity: location.pathname === "/messages" ? 0.5 : 1,
+          }}
+          onMouseEnter={(e) =>
+            showTooltip(e, isCollapsed ? "Open Sidebar" : "Close Sidebar")
           }
-        }}
-        style={{
-          marginTop: "15px",
-          background: "#F5F6FA",
-          border: "none",
-          borderRadius: "50%",
-          width: "40px",
-          height: "40px",
-          cursor: location.pathname === "/messages" ? "not-allowed" : "pointer",
-          color: "#611DD0",
-          alignSelf: "center",
-          opacity: location.pathname === "/messages" ? 0.5 : 1,
-        }}
-        onMouseEnter={showTooltip}
-        onMouseLeave={hideTooltip}
-        disabled={location.pathname === "/messages"}
-      >
-        {isCollapsed ? "→" : "←"}
-        {isCollapsed && <div className="tooltip mt-60" style={tooltipStyle}>{isCollapsed ? "Open Sidebar" : "Close Sidebar"}</div>}
-      </button>
-    </div>
+          onMouseLeave={hideTooltip}
+          disabled={location.pathname === "/messages"}
+        >
+          {isCollapsed ? "→" : "←"}
+        </button>
+
+        <a
+          style={linkStyle("/themes")}
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavigate("/themes");
+          }}
+          onMouseEnter={(e) => showTooltip(e, "Themes")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FaPaintBrush size={25} />
+          ) : (
+            <img
+              src={themes}
+              alt="Themes"
+              style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }}
+            />
+          )}
+          {!isCollapsed && "Themes"}
+        </a>
+
+        <a
+          href="/friend_request"
+          style={linkStyle("/PendingRequest")}
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavigate("/friend_request");
+          }}
+          onMouseEnter={(e) => showTooltip(e, "Follow Request")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FaPaintBrush size={25} /> // Fallback icon
+          ) : (
+            <img
+              src={pendingRequest}
+              alt="Follow Request"
+              onError={() => setImgErr(true)}
+              style={{
+                width: "38px",
+                height: "38px",
+                borderRadius: "50%",
+                marginRight: isCollapsed ? "0" : "10px",
+              }}
+            />
+          )}
+          {!isCollapsed && "Follow Request"}
+        </a>
+
+        <a
+          href="/contact"
+          style={linkStyle("/contact")}
+          onClick={(e) => {
+            e.preventDefault();
+            handleNavigate("/contact");
+          }}
+          onMouseEnter={(e) => showTooltip(e, "Contact")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FaEnvelope size={23.5} />
+          ) : (
+            <img
+              src={contacts}
+              alt="Contact"
+              onError={() => setImgErr(true)}
+              style={{
+                width: "38px",
+                height: "38px",
+                borderRadius: "50%",
+                marginRight: isCollapsed ? "0" : "10px",
+              }}
+            />
+          )}
+          {!isCollapsed && "Contact"}
+        </a>
+
+        <a
+          style={linkStyle("/logout")}
+          onClick={handleLogout}
+          onMouseEnter={(e) => showTooltip(e, "Logout")}
+          onMouseLeave={hideTooltip}
+        >
+          {imgErr ? (
+            <FaSignOutAlt size={23.5} />
+          ) : (
+            <img
+              src={logout}
+              alt="Logout"
+              style={{ width: "38px", marginRight: isCollapsed ? "0" : "10px" }}
+            />
+          )}
+          {!isCollapsed && "Logout"}
+        </a>
+      </div>
+
+      {/* Tooltip Renderer */}
+      {tooltip && (
+        <div
+          style={{
+            position: "fixed",
+            top: `${tooltip.top}px`,
+            left: `${tooltip.left}px`,
+            transform: "translateY(-50%)",
+            background: "#fff",
+            color: "#611DD0",
+            padding: "5px 10px",
+            borderRadius: "5px",
+            whiteSpace: "nowrap",
+            boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+            zIndex: 9999,
+          }}
+        >
+          {tooltip.text}
+        </div>
+      )}
+    </>
   );
 };
 

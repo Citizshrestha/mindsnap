@@ -1,307 +1,87 @@
-export interface MessageType {
+// Example MessageType
+export interface Receiver {
   _id: string;
-  chatUser: string;
-  content: string;
-  messageType: "text" | "image" | "video" | "file" | "voice";
-  mediaUrl?: string;
-  createdAt: string;
-  status: "sent" | "pending" | "failed";
-  sender: { _id: string };
+  username?: string;
+  profilePicture?: string;
 }
+
+export interface Sender {
+  _id: string;
+  username?: string;
+  profilePicture?: string;
+}
+
+export interface ReplyTo {
+  _id: string;
+  content: string;
+  sender: Sender;
+  messageType: MessageType["messageType"];
+}
+
+export interface Reaction {
+  user: string;
+  reaction: string;
+}
+
+export type MessageType = {
+  _id: string;
+  content: string;
+  messageType: "text";
+  createdAt: string;
+  status: string;
+  sender: Sender;
+  receiver: Receiver; // Added to fix type error
+  replyTo?: string | ReplyTo;
+  isPinned?: boolean;
+  reactions?: Reaction[];
+  mediaUrl?: string;
+  fileName?: string;
+};
 
 export const messageSample: MessageType[] = [
   {
     _id: "m1",
-    chatUser: "Nocys",
     content: "Hey, are you free tomorrow?",
     messageType: "text",
     createdAt: "2025-09-05T09:00:00Z",
     status: "sent",
     sender: { _id: "user1" },
+    receiver: { _id: "user2" },
   },
   {
     _id: "m2",
-    chatUser: "Nocys",
     content: "Yes! What time?",
     messageType: "text",
     createdAt: "2025-09-05T09:01:00Z",
     status: "sent",
     sender: { _id: "user2" },
+    receiver: { _id: "user1" },
   },
   {
     _id: "m3",
-    chatUser: "Nocys",
     content: "How about 3 PM?",
     messageType: "text",
     createdAt: "2025-09-05T09:02:00Z",
     status: "sent",
     sender: { _id: "user1" },
+    receiver: { _id: "user2" },
   },
-
   {
     _id: "m4",
-    chatUser: "Abisha Karki",
     content: "Can we meet today?",
     messageType: "text",
     createdAt: "2025-09-05T09:10:00Z",
     status: "sent",
     sender: { _id: "user1" },
+    receiver: { _id: "user3" },
   },
   {
     _id: "m5",
-    chatUser: "Abisha Karki",
     content: "Sure, at 6 PM?",
     messageType: "text",
     createdAt: "2025-09-05T09:11:00Z",
     status: "sent",
     sender: { _id: "user3" },
-  },
-  {
-    _id: "m6",
-    chatUser: "Abisha Karki",
-    content: "Here’s a pic!",
-    messageType: "image",
-    mediaUrl: "https://i.pravatar.cc/150?img=1",
-    createdAt: "2025-09-05T09:12:00Z",
-    status: "sent",
-    sender: { _id: "user3" },
-  },
-
-  {
-    _id: "m7",
-    chatUser: "Manish Bhatta",
-    content: "Check this out",
-    messageType: "image",
-    mediaUrl: "https://i.pravatar.cc/150?img=3",
-    createdAt: "2025-09-05T09:20:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m8",
-    chatUser: "Manish Bhatta",
-    content: "Nice! Here’s a video",
-    messageType: "video",
-    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    createdAt: "2025-09-05T09:21:00Z",
-    status: "sent",
-    sender: { _id: "user4" },
-  },
-
-  {
-    _id: "m9",
-    chatUser: "Marshal Chaudhary",
-    content: "Meeting at 5 PM",
-    messageType: "text",
-    createdAt: "2025-09-05T10:00:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m10",
-    chatUser: "Marshal Chaudhary",
-    content: "Confirmed",
-    messageType: "text",
-    createdAt: "2025-09-05T10:01:00Z",
-    status: "sent",
-    sender: { _id: "user5" },
-  },
-
-  {
-    _id: "m11",
-    chatUser: "Anita Karki",
-    content: "Got your email.",
-    messageType: "text",
-    createdAt: "2025-09-05T10:15:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m12",
-    chatUser: "Anita Karki",
-    content: "Here’s a file",
-    messageType: "file",
-    mediaUrl: "https://example.com/sample.pdf",
-    createdAt: "2025-09-05T10:16:00Z",
-    status: "sent",
-    sender: { _id: "user6" },
-  },
-
-  {
-    _id: "m13",
-    chatUser: "Ramesh Adhikari",
-    content: "Let's catch up later.",
-    messageType: "text",
-    createdAt: "2025-09-05T10:30:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m14",
-    chatUser: "Ramesh Adhikari",
-    content: "Voice message",
-    messageType: "voice",
-    mediaUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
-    createdAt: "2025-09-05T10:31:00Z",
-    status: "sent",
-    sender: { _id: "user7" },
-  },
-
-  {
-    _id: "m15",
-    chatUser: "Sita Thapa",
-    content: "Happy Birthday!",
-    messageType: "text",
-    createdAt: "2025-09-05T11:00:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m16",
-    chatUser: "Sita Thapa",
-    content: "Video call?",
-    messageType: "video",
-    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    createdAt: "2025-09-05T11:01:00Z",
-    status: "sent",
-    sender: { _id: "user8" },
-  },
-
-  {
-    _id: "m17",
-    chatUser: "Hari Joshi",
-    content: "Check this document.",
-    messageType: "image",
-    mediaUrl: "https://i.pravatar.cc/150?img=8",
-    createdAt: "2025-09-05T11:30:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m18",
-    chatUser: "Hari Joshi",
-    content: "Voice note",
-    messageType: "voice",
-    mediaUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-    createdAt: "2025-09-05T11:31:00Z",
-    status: "sent",
-    sender: { _id: "user9" },
-  },
-
-  {
-    _id: "m19",
-    chatUser: "Ramu Adhikari",
-    content: "Let's catch up today.",
-    messageType: "text",
-    createdAt: "2025-09-05T12:00:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m20",
-    chatUser: "Ramu Adhikari",
-    content: "File attached",
-    messageType: "file",
-    mediaUrl: "https://example.com/sample2.pdf",
-    createdAt: "2025-09-05T12:01:00Z",
-    status: "sent",
-    sender: { _id: "user10" },
-  },
-
-  {
-    _id: "m21",
-    chatUser: "Prakash Sharma",
-    content: "Hello from Nepal!",
-    messageType: "text",
-    createdAt: "2025-09-05T12:10:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m22",
-    chatUser: "Prakash Sharma",
-    content: "Voice message",
-    messageType: "voice",
-    mediaUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
-    createdAt: "2025-09-05T12:11:00Z",
-    status: "sent",
-    sender: { _id: "user11" },
-  },
-  {
-    _id: "m23",
-    chatUser: "Laxmi Gurung",
-    content: "Namaste!",
-    messageType: "text",
-    createdAt: "2025-09-05T12:20:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m24",
-    chatUser: "Laxmi Gurung",
-    content: "Here’s a video",
-    messageType: "video",
-    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    createdAt: "2025-09-05T12:21:00Z",
-    status: "sent",
-    sender: { _id: "user12" },
-  },
-  {
-    _id: "m25",
-    chatUser: "Bikash Thapa",
-    content: "Meeting notes",
-    messageType: "file",
-    mediaUrl: "https://example.com/notes.pdf",
-    createdAt: "2025-09-05T12:30:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m26",
-    chatUser: "Bikash Thapa",
-    content: "Image attached",
-    messageType: "image",
-    mediaUrl: "https://i.pravatar.cc/150?img=5",
-    createdAt: "2025-09-05T12:31:00Z",
-    status: "sent",
-    sender: { _id: "user13" },
-  },
-  {
-    _id: "m27",
-    chatUser: "Suresh Nepali",
-    content: "Call me later",
-    messageType: "text",
-    createdAt: "2025-09-05T12:40:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m28",
-    chatUser: "Suresh Nepali",
-    content: "Voice note",
-    messageType: "voice",
-    mediaUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
-    createdAt: "2025-09-05T12:41:00Z",
-    status: "sent",
-    sender: { _id: "user14" },
-  },
-  {
-    _id: "m29",
-    chatUser: "Priya Singh",
-    content: "Good morning!",
-    messageType: "text",
-    createdAt: "2025-09-05T12:50:00Z",
-    status: "sent",
-    sender: { _id: "user1" },
-  },
-  {
-    _id: "m30",
-    chatUser: "Priya Singh",
-    content: "Video call?",
-    messageType: "video",
-    mediaUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
-    createdAt: "2025-09-05T12:51:00Z",
-    status: "sent",
-    sender: { _id: "user15" },
+    receiver: { _id: "user1" },
   },
 ];

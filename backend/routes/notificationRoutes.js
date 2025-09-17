@@ -4,7 +4,8 @@ import {
   createNotification,
   getNotifications,
   markNotificationAsRead,
-  markNotificationsAsRead, 
+  markNotificationsAsRead,
+  followBack,
 } from "../controllers/notificationController.js";
 
 const router = express.Router();
@@ -18,7 +19,10 @@ router.get("/", protect, getNotifications);
 // Mark a single notification as read
 router.patch("/:id/read", protect, markNotificationAsRead);
 
-// New route: Mark multiple notifications as read
+// Mark multiple notifications as read
 router.patch("/mark-read", protect, markNotificationsAsRead);
+
+// New route: Handle follow-back action
+router.post("/follow-back", protect, followBack);
 
 export default router;

@@ -4,10 +4,12 @@ import Sidebar from "../components/sidebar/Sidebar";
 import { useSelector } from "react-redux";
 import type { RootState } from "../redux/store";
 import { useEffect } from "react";
+import { selectUnreadCount } from "../redux/slices/notificationSlice";
 
 const AuthenticatedLayout: React.FC = () => {
   const navigate = useNavigate();
   const { username } = useSelector((state: RootState) => state.user);
+  const unreadCount = useSelector(selectUnreadCount); // Get unread count from Redux
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -19,8 +21,8 @@ const AuthenticatedLayout: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <Header />
+      {/* Header - Pass unreadCount as a prop */}
+      <Header unreadCount={unreadCount} />
 
       {/* Main Content Area with Sidebar and Outlet */}
       <div className="flex flex-1">
@@ -28,7 +30,7 @@ const AuthenticatedLayout: React.FC = () => {
         <Sidebar />
 
         {/* Main Content */}
-        <main className="flex-1   p-5 ">
+        <main className="flex-1 p-5">
           <Outlet />
         </main>
       </div>

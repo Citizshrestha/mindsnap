@@ -17,6 +17,7 @@ import { socketService } from "../../services/socketServices";
 import { sampleNotifications } from "../../data/sampleNotification";
 import "./header.css";
 import { setUnreadCount } from "../../redux/slices/notificationSlice";
+import { selectUnreadCount } from "../../redux/slices/notificationSlice";
 
 interface CloudinaryUploadResponse {
   secure_url: string;
@@ -47,15 +48,12 @@ interface SearchUser {
   isFollowing?: boolean;
 }
 
-interface HeaderProps {
-  unreadCount: number;
-}
-
-const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
+const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const { username: currentUsername, profilePicture, _id: userId } = useSelector((state: RootState) => state.user);
+  const unreadCount = useSelector(selectUnreadCount);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -68,7 +66,7 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
   );
   const [showNotification, setShowNotification] = useState(false);
   const [hasImageError, setHasImageError] = useState(false);
-  const [localUnreadCount, setLocalUnreadCount] = useState(initialUnreadCount);
+  const [hasFetchedNotifications, setHasFetchedNotifications] = useState(false);
 
   // Fetch user data on mount
   useEffect(() => {
@@ -114,8 +112,10 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
     };
   }, [dispatch]);
 
-  // Fetch initial unread count
+  // Fetch notifications only once on component mount
   useEffect(() => {
+    if (hasFetchedNotifications) return;
+
     const fetchAndCombineNotifications = async () => {
       try {
         const token = localStorage.getItem("accessToken");
@@ -124,44 +124,78 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
         const response = await axiosClient.get("/api/notifications", {
           headers: { Authorization: `Bearer ${token}` },
         });
+
         if (response.data.success) {
+          // Combine sample notifications and DB notifications
           const dbNotifications = response.data.notifications || [];
-          const combinedNotifications = [...sampleNotifications, ...dbNotifications];
-          const unreadCount = combinedNotifications.filter((n: { read: boolean }) => !n.read).length;
+          const combinedNotifications = [...sampleNotifications, ...dbNotifications].filter(
+            (notif) => notif.sender && notif.sender._id && notif.sender.username && notif.sender.profilePicture
+          );
+
+          // Check follow status for "follow" notifications
+          const updatedNotifications = await Promise.all(
+            combinedNotifications.map(async (notif) => {
+              if (notif.type === "follow" && notif.sender._id) {
+                try {
+                  const followRes = await axiosClient.get(`/api/users/${notif.sender._id}/follow-status`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                  });
+                  return { ...notif, isFollowing: followRes.data.isFollowing || false };
+                } catch {
+                  return { ...notif, isFollowing: false };
+                }
+              }
+              return notif;
+            })
+          );
+
+          // Sort by date (newest first)
+          updatedNotifications.sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
+
+          // Set unread count
+          const unreadCount = updatedNotifications.filter((n) => !n.read).length;
           dispatch(setUnreadCount(unreadCount));
-          setLocalUnreadCount(unreadCount);
           localStorage.setItem("unreadCount", unreadCount.toString());
         } else {
           throw new Error("Failed to fetch notifications");
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to fetch unread count";
-        console.error(message);
-        toast.error(`Error: ${message}`);
-        const unreadCount = sampleNotifications.filter((n: { read: boolean }) => !n.read).length;
+        console.error("Error fetching notifications:", err);
+        // fallback: count unread in sampleNotifications only
+        const unreadCount = sampleNotifications.filter((n) => !n.read).length;
         dispatch(setUnreadCount(unreadCount));
-        setLocalUnreadCount(unreadCount);
         localStorage.setItem("unreadCount", unreadCount.toString());
+      } finally {
+        setHasFetchedNotifications(true);
       }
     };
 
     fetchAndCombineNotifications();
-  }, [dispatch]);
+  }, [dispatch, hasFetchedNotifications]);
 
-  // Handle socket connection and real-time notifications
-  const handleNewNotification = useCallback((notification: SocketNotification) => {
-    if (notification.type === "follow" && !notification.read) {
-      setLocalUnreadCount((prev) => prev + 1);
-      dispatch(setUnreadCount(localUnreadCount + 1));
-      localStorage.setItem("unreadCount", (localUnreadCount + 1).toString());
-    }
-  }, [dispatch, localUnreadCount]);
+  const handleNewNotification = useCallback(
+    (notification: SocketNotification) => {
+      if (!notification.read) {
+        dispatch(setUnreadCount(unreadCount + 1));
+        localStorage.setItem("unreadCount", (unreadCount + 1).toString());
+      }
+    },
+    [dispatch, unreadCount]
+  );
 
   useEffect(() => {
     if (!userId || !localStorage.getItem("accessToken")) return;
 
     const connectSocket = async () => {
       try {
+        // Check if already connected
+        if (socketService.isSocketConnected()) {
+          socketService.onNotification(handleNewNotification);
+          return;
+        }
+        
         await socketService.connect(localStorage.getItem("accessToken")!, userId);
         socketService.joinUserRoom(userId);
         socketService.onNotification(handleNewNotification);
@@ -175,16 +209,8 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
 
     return () => {
       socketService.offNotification(handleNewNotification);
-      if (socketService.isSocketConnected()) {
-        socketService.disconnect();
-      }
     };
   }, [userId, handleNewNotification, navigate]);
-
-  // Sync localUnreadCount with Redux store
-  useEffect(() => {
-    setLocalUnreadCount(initialUnreadCount);
-  }, [initialUnreadCount]);
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -371,13 +397,12 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
             className="cursor-pointer text-[#FFD700]"
             onClick={() => setShowNotification(true)}
           />
-          {localUnreadCount > 0 && (
+          {unreadCount > 0 && (
             <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center transform translate-x-2 -translate-y-1">
-              {localUnreadCount}
+              {unreadCount}
             </span>
           )}
           {showNotification && <Notification onClose={() => setShowNotification(false)} onUnreadCountChange={(count) => {
-            setLocalUnreadCount(count);
             dispatch(setUnreadCount(count));
             localStorage.setItem("unreadCount", count.toString());
           }} />}

@@ -1,4 +1,6 @@
 import { io, Socket } from "socket.io-client";
+import axios from "axios";
+import { toast } from "react-toastify";
 
 export interface TargetId {
   _id: string;
@@ -39,12 +41,14 @@ class SocketService {
   private maxReconnectAttempts: number = 5;
   private userId: string | null = null;
 
-  connect(token: string, userId: string): Promise<Socket> {
+  async connect(token: string, userId: string): Promise<Socket> {
     return new Promise((resolve, reject) => {
       if (this.socket?.connected && this.userId === userId) {
         resolve(this.socket);
         return;
       }
+
+      console.log("Attempting to connect with token:", token.substring(0, 20) + "...", "userId:", userId);
 
       this.socket = io(import.meta.env.VITE_API_BASE_URL || "http://localhost:5000", {
         auth: { token },
@@ -65,10 +69,34 @@ class SocketService {
         resolve(this.socket!);
       });
 
-      this.socket.on("connect_error", (error) => {
+      this.socket.on("connect_error", async (error) => {
         console.error("❌ Socket connection error:", error.message);
         this.isConnected = false;
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+
+        if (error.message.includes("Invalid authentication token")) {
+          try {
+            console.log("Attempting to refresh token...");
+            const response = await axios.post(
+              `${import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"}/api/auth/refresh`,
+              {},
+              { withCredentials: true }
+            );
+            const newToken = response.data.accessToken;
+            localStorage.setItem("accessToken", newToken);
+            console.log("Token refreshed successfully:", newToken.substring(0, 20) + "...");
+
+            // Update auth token and reconnect
+            this.socket!.auth = { token: newToken };
+            this.socket!.connect();
+          } catch (refreshError) {
+            console.error("Failed to refresh token:", refreshError);
+            toast.error("Session expired. Please log in again.");
+            localStorage.removeItem("accessToken");
+            localStorage.removeItem("userId");
+            reject(new Error("Authentication failed: Unable to refresh token"));
+          }
+        } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          toast.error("Failed to connect to server after multiple attempts.");
           reject(new Error("Max reconnection attempts reached"));
         }
       });
@@ -87,8 +115,6 @@ class SocketService {
         this.reconnectAttempts = attempt;
         console.log(`🔄 Reconnection attempt ${attempt}/${this.maxReconnectAttempts}`);
       });
-
-      // Remove aggressive timeout to allow reconnection attempts
     });
   }
 

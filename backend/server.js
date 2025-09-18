@@ -6,6 +6,9 @@ import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { sendMessage } from "./controllers/messageController.js";
+import multer from "multer";
+import jwt from "jsonwebtoken";
+import { Notification } from "./models/notification.models.js";
 
 // Routes
 import authRoutes from "./routes/authRoutes.js";
@@ -18,12 +21,12 @@ import storyRoutes from "./routes/storyRoutes.js";
 import userTagRoutes from "./routes/userTagRoutes.js";
 import likeRoutes from "./routes/likeRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import hashtagRoutes  from "./routes/hashtagRoutes.js";
 
 dotenv.config();
 const app = express();
 
 // ---------------------- MIDDLEWARE ----------------------
-app.use(express.json());
 app.use(cookieParser());
 app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
@@ -39,9 +42,14 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // ---------------------- DATABASE ----------------------
 connectDB();
+
+// ---------------------- MULTER CONFIGURATION ----------------------
+const upload = multer({ dest: "uploads/" });
 
 // ---------------------- ROUTES ----------------------
 app.get("/", (req, res) => {
@@ -49,7 +57,6 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/posts", postRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/conversations", conversationRoutes);
@@ -58,6 +65,9 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/user-tags", userTagRoutes);
 app.use("/api/likes", likeRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/hashtags", hashtagRoutes);
+
+app.use("/api/posts", postRoutes);
 
 // ---------------------- ERROR HANDLER ----------------------
 app.use((err, req, res, next) => {
@@ -79,28 +89,38 @@ const io = new Server(server, {
 });
 
 io.use((socket, next) => {
-  const userId = socket.handshake.auth.userId || socket.handshake.auth.token; // Use userId or token as fallback
-  if (userId) {
-    socket.userId = userId; // Attach userId to socket for use in events
-    console.log(`Socket connection for user: ${userId}`);
-  } else {
-    console.warn("No userId provided in socket handshake");
+  const token = socket.handshake.auth.token;
+
+  if (!token) {
+    console.warn("No token provided in socket handshake");
+    return next(new Error("Authentication required: No token provided"));
   }
-  next(); // Proceed without token verification
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    socket.userId = decoded.id;
+    console.log(`Socket connection for user: ${socket.userId}`);
+    next();
+  } catch (error) {
+    console.error("Invalid token in socket handshake:", {
+      message: error.message,
+      token: token.substring(0, 20) + "...",
+    });
+    next(new Error(`Invalid authentication token: ${error.message}`));
+  }
 });
 
 io.on("connection", (socket) => {
   console.log("New Client Connected: ", socket.id);
 
   socket.on("joinUser", (userId) => {
-    if (socket.userId && socket.userId !== userId) {
+    if (socket.userId !== userId) {
       console.warn(`Unauthorized join attempt by ${socket.userId} for user ${userId}`);
       return;
     }
     socket.join(`user_${userId}`);
     console.log(`✅ User ${userId} joined notification room. Rooms:`, socket.rooms);
 
-    // Emit initial unread count
     socket.emit("fetchUnreadCount", userId, (unreadCount) => {
       console.log(`Initial unread count for ${userId}: ${unreadCount}`);
     });

@@ -1,16 +1,17 @@
-// src/store.ts
 import { configureStore } from "@reduxjs/toolkit";
 import userReducer from "./slices/userSlice";
 import messageReducer from "./slices/messageSlice";
 import { messageApi } from "../services/messageApi";
+import notificationReducer from "./slices/notificationSlice";
 
 export const store = configureStore({
   reducer: {
     user: userReducer,
     message: messageReducer,
-    [messageApi.reducerPath] : messageApi.reducer,
+    [messageApi.reducerPath]: messageApi.reducer,
+    notification: notificationReducer,
   },
-  middleware: (getDefaultMiddleware) => 
+  middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware().concat(messageApi.middleware),
 });
 

@@ -13,44 +13,113 @@ import {
 } from "../../redux/slices/userSlice";
 import axiosClient from "../../api/axiosClient";
 import type { RootState } from "../../redux/store";
-import { postsData, type Post } from "../../data/postFeed";
-import { FaRegCommentDots, FaShare } from "react-icons/fa";
+import {
+  FaRegCommentDots,
+  FaShare,
+  FaEllipsisV,
+  FaVideo,
+} from "react-icons/fa";
 import { BiSolidLike } from "react-icons/bi";
 import { useDispatch, useSelector } from "react-redux";
 import HashtagList from "../HashtagList/HashtagList";
-import storiesData, { type StorySample } from "../../data/storySample";
+import Story from "../../components/story/Story";
+import { socketService } from "../../services/socketServices";
+import { useSocketNotifications } from "../../hooks/useSocketNotifications";
 
-// Import Swiper styles
-import "swiper/css";
-import "swiper/css/navigation";
-import "swiper/css/pagination";
+export interface Post {
+  id: string;
+  name: string;
+  username: string;
+  time: string;
+  caption: string;
+  likes: number;
+  comments: number;
+  shares: number;
+  profilePicture: string;
+  media: {
+    type: "image" | "video" | "audio" | "file";
+    url: string;
+    name?: string;
+  } | null;
+  userId: string; 
+  userReaction?: string;
+}
 
-// Swiper imports
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Navigation, Pagination } from "swiper/modules";
+interface Emoji {
+  native: string;
+  id: string;
+}
 
 const Home = () => {
   const dispatch = useDispatch();
-  const { profilePicture, fullname, username, gender } = useSelector(
-    (state: RootState) => state.user
-  );
-  const [posts, setPosts] = useState<Post[]>(postsData);
+  useSocketNotifications();
+
+  const {
+    profilePicture,
+    fullname,
+    gender,
+    _id: currentUserId,
+  } = useSelector((state: RootState) => state.user);
+
+  const [posts, setPosts] = useState<Post[]>([]);
   const [showPostOptions, setShowPostOptions] = useState(false);
-  const [stories] = useState<StorySample[]>(storiesData);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
+  const [selectedMediaType, setSelectedMediaType] = useState<
+    "image" | "video" | null
+  >(null);
+  const [showReactionOptions, setShowReactionOptions] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [showOptionsMenu, setShowOptionsMenu] = useState<string | null>(null);
+  const [isPosting, setIsPosting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
+    null
+  );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const optionsMenuRef = useRef<HTMLDivElement>(null);
 
+
+  // Function to get reaction icon based on reaction type
+const getReactionIcon = (reactionType: string) => {
+  switch (reactionType) {
+    case "love": return "❤️";
+    case "haha": return "😂";
+    case "wow": return "😮";
+    case "sad": return "😢";
+    case "angry": return "😠";
+    default: return "👍"; // Default to like
+  }
+};
+  // Add socket connection on component mount
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    const userId = localStorage.getItem("userId") || currentUserId;
+
+    if (token && userId) {
+      socketService.connect(token, userId).catch((error) => {
+        console.error("Socket connection failed:", error);
+      });
+    }
+
+    return () => {
+      if (socketService.isSocketConnected()) {
+        socketService.disconnect();
+      }
+    };
+  }, [currentUserId]);
   const getAvatarByGender = (gender: string) => {
     if (gender?.toLowerCase() === "male") return MaleAvatar;
     else if (gender?.toLowerCase() === "female") return FemaleAvatar;
     else return DefaultAvatar;
   };
 
-  const formatTime = () => {
-    return new Date().toLocaleTimeString([], {
+  const formatTime = (date: string | Date) => {
+    return new Date(date).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -71,20 +140,75 @@ const Home = () => {
         dispatch(setUsername(data.username || "@currentUser"));
         dispatch(setGender(data.gender || ""));
       } catch (err: unknown) {
-        const errorObj = err as {
+        const error = err as {
           message?: string;
-          res?: { status?: number; data?: unknown };
+          response?: { status?: number; data?: unknown };
         };
         console.error("Fetch Profile error: ", {
-          message: errorObj?.message,
-          status: errorObj?.res?.status,
-          data: errorObj?.res?.data,
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
         });
         toast.error("Failed to load profile data");
       }
     };
     fetchProfile();
   }, [dispatch]);
+
+  useEffect(() => {
+    const fetchPosts = async () => {
+      try {
+        const res = await axiosClient.get("/api/posts/getPosts", {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        });
+
+        // The backend returns the posts array directly, not nested in a 'posts' property
+        const fetchedPosts = res.data;
+
+        const formattedPosts: Post[] = fetchedPosts.map((post: any) => ({
+          id: post._id,
+          caption: post.content,
+          media: post.image
+            ? {
+                type: post.image.includes("/video/")
+                  ? ("video" as const)
+                  : ("image" as const),
+                url: post.image,
+                name: post.image.split("/").pop(),
+              }
+            : null,
+          likes: post.likes?.length || 0,
+          comments: post.comments?.length || 0,
+          shares: post.shares || 0,
+          time: formatTime(post.createdAt),
+          profilePicture: post.user?.profilePicture || DefaultAvatar,
+          username: post.user?.username
+            ? `@${post.user.username}`
+            : "@UnknownUser",
+          name: post.user?.fullname || "Unknown User",
+          userId: post.user?._id || "", // Add userId to identify post owner
+          userReaction: post.userReaction || undefined
+        }));
+
+        setPosts(formattedPosts);
+      } catch (err: unknown) {
+        const error = err as {
+          message?: string;
+          response?: { status?: number; data?: { message?: string } };
+        };
+        console.error("Fetch Posts error: ", {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
+        toast.error(error.response?.data?.message || "Failed to load posts");
+      }
+    };
+
+    fetchPosts();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -94,15 +218,18 @@ const Home = () => {
       ) {
         setShowEmojiPicker(false);
       }
+
+      if (
+        optionsMenuRef.current &&
+        !optionsMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowOptionsMenu(null);
+      }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  interface Emoji {
-    native: string;
-    id: string;
-  }
 
   const handleEmojiSelect = (emoji: Emoji) => {
     if (textareaRef.current) {
@@ -116,45 +243,127 @@ const Home = () => {
     }
   };
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (
+    event: React.ChangeEvent<HTMLInputElement>,
+    type: "image" | "video"
+  ) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Check file size (max 50MB)
+      if (file.size > 50 * 1024 * 1024) {
+        toast.error("File size must be less than 50MB");
+        return;
+      }
+
       setSelectedMedia(file);
-      toast.success(`Selected ${file.name}`);
+      setSelectedMediaType(type);
+
+      if (type === "image") {
+        toast.success(`Selected image: ${file.name}`);
+      } else {
+        toast.success(`Selected video: ${file.name}`);
+      }
     }
   };
 
-  const handlePostSubmit = () => {
+  const handlePostSubmit = async () => {
     if (textareaRef.current && textareaRef.current.value.trim()) {
-      let media = null;
+      setIsPosting(true);
+      const formData = new FormData();
+      formData.append("content", textareaRef.current.value.trim());
+
       if (selectedMedia) {
-        const mediaType = selectedMedia.type.split("/")[0];
-        media = {
-          type: mediaType as "image" | "video" | "audio" | "file",
-          url: URL.createObjectURL(selectedMedia),
-          name: selectedMedia.name,
-        };
+        formData.append("media", selectedMedia);
+        console.log(
+          "Selected media:",
+          selectedMedia.name,
+          selectedMedia.type,
+          selectedMedia.size
+        );
       }
 
-      const newPost: Post = {
-        id: posts.length + 1,
-        name: fullname || "Current User",
-        username: username ? `@${username}` : "@CurrentUser",
-        time: formatTime(),
-        caption: textareaRef.current.value,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        profilePicture: profilePicture || getAvatarByGender(gender),
-        media,
-      };
-      setPosts((prevPosts) => [newPost, ...prevPosts]);
-      textareaRef.current.value = "";
-      setSelectedMedia(null);
-      setShowPostOptions(false);
-      setShowEmojiPicker(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      toast.success("Post created successfully!");
+      try {
+        console.log("Sending post request...");
+        const response = await axiosClient.post(
+          "/api/posts/createPost",
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+              "Content-Type": "multipart/form-data",
+            },
+          }
+        );
+
+        console.log("Post created successfully:", response.data);
+
+        if (response.data.success) {
+          const newPostData = response.data.data;
+          const newPost: Post = {
+            id: newPostData._id,
+            caption: newPostData.content,
+            media: newPostData.image
+              ? {
+                  type: newPostData.image.includes("/video/")
+                    ? ("video" as const)
+                    : ("image" as const),
+                  url: newPostData.image,
+                  name: newPostData.image.split("/").pop(),
+                }
+              : null,
+            likes: newPostData.likes?.length || 0,
+            comments: newPostData.comments?.length || 0,
+            shares: newPostData.shares || 0,
+            time: formatTime(newPostData.createdAt),
+            profilePicture:
+              newPostData.user?.profilePicture || getAvatarByGender(gender),
+            username: newPostData.user?.username
+              ? `@${newPostData.user.username}`
+              : "@CurrentUser",
+            name: newPostData.user?.fullname || fullname || "Current User",
+            userId: newPostData.user?._id || currentUserId || "",
+          };
+
+          setPosts((prevPosts) => [newPost, ...prevPosts]);
+          textareaRef.current.value = "";
+          setSelectedMedia(null);
+          setSelectedMediaType(null);
+          setShowPostOptions(false);
+          setShowEmojiPicker(false);
+          if (imageInputRef.current) imageInputRef.current.value = "";
+          if (videoInputRef.current) videoInputRef.current.value = "";
+          toast.success("Post created successfully!");
+        } else {
+          toast.error(response.data.message || "Failed to create post");
+        }
+      } catch (err: unknown) {
+        const error = err as {
+          message?: string;
+          response?: {
+            status?: number;
+            data?: {
+              message?: string;
+              error?: string;
+              stack?: string;
+            };
+          };
+        };
+
+        console.error("Post creation error details:", {
+          message: error.message,
+          status: error.response?.status,
+          data: error.response?.data,
+        });
+
+        const errorMessage =
+          error.response?.data?.error ||
+          error.response?.data?.message ||
+          "Failed to create post. Please check your connection and try again.";
+
+        toast.error(errorMessage);
+      } finally {
+        setIsPosting(false);
+      }
     } else {
       toast.error("Please enter a caption!");
     }
@@ -164,6 +373,124 @@ const Home = () => {
     setShowEmojiPicker(!showEmojiPicker);
     if (!showEmojiPicker && textareaRef.current)
       setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+const handleReaction = async (postId: string, reactionType: string = "like") => {
+  try {
+    const response = await axiosClient.post(
+      `/api/likes/react/Post/${postId}/${reactionType}`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        },
+      }
+    );
+
+    // Update the post's like count and user reaction
+    setPosts((prevPosts) =>
+      prevPosts.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              likes: response.data.liked
+                ? post.likes + 1
+                : Math.max(0, post.likes - 1),
+              userReaction: response.data.liked ? reactionType : undefined
+            }
+          : post
+      )
+    );
+
+    if (response.data.liked) {
+      // find the post to get the owners id
+      const likedPost = posts.find((post) => post.id === postId);
+      if (likedPost && likedPost.userId !== currentUserId) {
+        socketService.sendLikeNotification({
+          recipientId: likedPost.userId,
+          senderId: currentUserId,
+          targetType: "Post",
+          targetId: postId,
+          type: "like",
+          reactionType: reactionType // Include reaction type in notification
+        });
+      }
+    }
+    toast.success(response.data.message);
+  } catch (err: unknown) {
+    const error = err as {
+      message?: string;
+      response?: { data?: { message?: string } };
+    };
+    console.error("Reaction error:", error);
+    toast.error(error.response?.data?.message || "Failed to add reaction");
+  }
+  setShowReactionOptions((prev) => ({ ...prev, [postId]: false }));
+};
+
+  const toggleOptionsMenu = (postId: string) => {
+    setShowOptionsMenu(showOptionsMenu === postId ? null : postId);
+  };
+
+  const handleSavePost = async (postId: string) => {
+    try {
+      // Implement save post functionality
+      console.log(`${postId} has been saved!`);
+      toast.success("Post saved!");
+      setShowOptionsMenu(null);
+    } catch (error) {
+      console.error("Error saving post:", error);
+      toast.error("Failed to save post");
+    }
+  };
+
+  const handleHidePost = (postId: string) => {
+    // Hide post from current view (frontend only)
+    setPosts(posts.filter((post) => post.id !== postId));
+    toast.success("Post hidden");
+    setShowOptionsMenu(null);
+  };
+
+  const handleReportPost = async (postId: string) => {
+    try {
+      // Implement report post functionality
+      console.log(`${postId} has been reported`);
+      toast.success("Post reported. Our team will review it shortly.");
+      setShowOptionsMenu(null);
+    } catch (error) {
+      console.error("Error reporting post:", error);
+      toast.error("Failed to report post");
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      setIsDeleting(postId);
+      await axiosClient.delete(`/api/posts/${postId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        },
+      });
+
+      // Remove post from frontend
+      setPosts(posts.filter((post) => post.id !== postId));
+      toast.success("Post deleted successfully");
+      setShowOptionsMenu(null);
+      setShowDeleteConfirm(null);
+    } catch (error) {
+      console.error("Error deleting post:", error);
+      toast.error("Failed to delete post");
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  const clearSelectedMedia = () => {
+    setSelectedMedia(null);
+    setSelectedMediaType(null);
+    if (imageInputRef.current) imageInputRef.current.value = "";
+    if (videoInputRef.current) videoInputRef.current.value = "";
+    toast.info("Media cleared");
   };
 
   return (
@@ -190,34 +517,77 @@ const Home = () => {
                   onFocus={() => setShowPostOptions(true)}
                 ></textarea>
               </div>
+
+              {selectedMedia && (
+                <div className="mt-3 p-2 bg-gray-100 rounded-lg flex items-center justify-between">
+                  <span className="text-sm text-gray-700">
+                    Selected: {selectedMedia.name} ({selectedMediaType})
+                  </span>
+                  <button
+                    onClick={clearSelectedMedia}
+                    className="text-red-500 hover:text-red-700 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+
               {showPostOptions && (
                 <div className="flex items-center justify-between mt-4 p-2">
-                  <div className="flex gap-6 text-[#611DD0]">
+                  <div className="flex gap-4 text-[#611DD0]">
+                    {/* Image upload */}
                     <input
                       type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                      accept="image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      ref={imageInputRef}
+                      onChange={(e) => handleFileSelect(e, "image")}
+                      accept="image/*"
                       className="hidden"
                     />
-                    <span
-                      className="text-2xl cursor-pointer hover:scale-110 transition-transform"
-                      onClick={() => fileInputRef.current?.click()}
+                    <button
+                      className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
+                      onClick={() => imageInputRef.current?.click()}
+                      title="Upload image"
                     >
-                      📤
-                    </span>
-                    <span
-                      className="text-2xl cursor-pointer hover:scale-110 transition-transform"
+                      <span className="text-2xl">📸</span>
+                    </button>
+
+                    {/* Video upload */}
+                    <input
+                      type="file"
+                      ref={videoInputRef}
+                      onChange={(e) => handleFileSelect(e, "video")}
+                      accept="video/*"
+                      className="hidden"
+                    />
+                    <button
+                      className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
+                      onClick={() => videoInputRef.current?.click()}
+                      title="Upload video"
+                    >
+                      <FaVideo className="text-xl text-[#611DD0]" />
+                    </button>
+
+                    <button
+                      className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
                       onClick={toggleEmojiPicker}
+                      title="Add emoji"
                     >
-                      😊
-                    </span>
+                      <span className="text-2xl">😊</span>
+                    </button>
                   </div>
                   <button
-                    className="flex items-center gap-2 bg-[#611DD0] text-white px-4 py-2 rounded-lg hover:bg-[#a679ee] transition-colors"
+                    className="flex items-center gap-2 bg-[#611DD0] text-white px-4 py-2 rounded-lg hover:bg-[#a679ee] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={handlePostSubmit}
+                    disabled={isPosting}
                   >
-                    Post
+                    {isPosting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Posting...
+                      </>
+                    ) : (
+                      "Post"
+                    )}
                   </button>
                 </div>
               )}
@@ -238,54 +608,15 @@ const Home = () => {
             </div>
 
             {/* Stories Slider */}
-            <div className="mb-8">
-              <Swiper
-                spaceBetween={10}
-                slidesPerView={4.5}
-                navigation
-                pagination={{ clickable: true }}
-                modules={[Navigation, Pagination]}
-                className="my-4"
-                breakpoints={{
-                  640: { slidesPerView: 3.5 },
-                  768: { slidesPerView: 4.5 },
-                }}
-              >
-                <SwiperSlide>
-                  <div
-                    className="stories relative w-[150px] h-[190px] overflow-hidden rounded-[20px] border-2 border-[#611DD0] cursor-pointer hover:border-[#a679ee] transition-colors"
-                    onClick={() => alert("Add new Story!")}
-                  >
-                    <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                      <span className="text-4xl text-[#611DD0]">+</span>
-                    </div>
-                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-[#611DD0] text-lg font-semibold">
-                      Add Story
-                    </div>
-                  </div>
-                </SwiperSlide>
-
-                {stories.map((story, idx) => (
-                  <SwiperSlide key={`${story.user}-${idx}`}>
-                    <div className="stories relative w-[150px] h-[190px] overflow-hidden rounded-[20px] border-2 border-[#611DD0] hover:border-[#a679ee] transition-colors">
-                      <img
-                        src={story.profilePic}
-                        alt={`Story ${idx + 1}`}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 text-white text-lg font-semibold">
-                        {story.user}
-                      </div>
-                    </div>
-                  </SwiperSlide>
-                ))}
-              </Swiper>
-            </div>
+            <Story />
 
             {/* Post Feeds */}
             <div className="flex flex-col gap-6">
               {posts.map((post) => (
-                <div key={post.id} className="bg-white shadow-md rounded-2xl p-6">
+                <div
+                  key={post.id}
+                  className="bg-white shadow-md rounded-2xl p-6 relative"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <img
@@ -304,55 +635,163 @@ const Home = () => {
                         <p className="text-sm text-gray-500">{post.time}</p>
                       </div>
                     </div>
-                    <button className="text-gray-700">•••</button>
+                    <div className="relative">
+                      <button
+                        className="text-gray-700 p-2 rounded-full hover:bg-gray-100"
+                        onClick={() => toggleOptionsMenu(post.id)}
+                      >
+                        <FaEllipsisV />
+                      </button>
+
+                      {showOptionsMenu === post.id && (
+                        <div
+                          ref={optionsMenuRef}
+                          className="absolute right-0 top-10 bg-white shadow-lg rounded-lg p-2 w-48 z-10 border border-gray-200"
+                        >
+                          <button
+                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
+                            onClick={() => handleSavePost(post.id)}
+                          >
+                            Save Post
+                          </button>
+                          <button
+                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
+                            onClick={() => handleHidePost(post.id)}
+                          >
+                            Hide this post
+                          </button>
+                          <button
+                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
+                            onClick={() => handleReportPost(post.id)}
+                          >
+                            Report post
+                          </button>
+
+                          {/* Show delete option only for post owner */}
+                          {post.userId === currentUserId && (
+                            <button
+                              className="w-full text-left p-2 hover:bg-red-50 rounded-md text-red-600 border-t border-gray-200 mt-2"
+                              onClick={() => setShowDeleteConfirm(post.id)}
+                            >
+                              Delete post
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-4 text-gray-800 text-lg break-words">
-                    {post.caption}
-                  </p>
+                  <div className="mt-4">
+                    <p className="text-gray-800 text-lg text-left break-words mb-2">
+                      {post.caption.replace(/#\w+/g, "")}
+                    </p>
+                    {post.caption.match(/#\w+/g) && (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {post.caption.match(/#\w+/g)?.map((hashtag, index) => (
+                          <span
+                            key={index}
+                            className="text-[#611DD0] font-medium"
+                          >
+                            {hashtag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   {post.media && (
                     <div className="mt-4">
                       {post.media.type === "image" && (
                         <img
                           src={post.media.url}
                           alt="post media"
-                          className="rounded-xl h-[400px] w-full object-cover"
+                          className="rounded-xl h-[450px] w-full object-cover"
+                          onError={(e) => {
+                            console.error(
+                              "Failed to load post image:",
+                              post.media?.url
+                            );
+                            e.currentTarget.style.display = "none";
+                          }}
                         />
                       )}
                       {post.media.type === "video" && (
                         <video
+                          autoPlay
+                          playsInline
                           controls
-                          className="rounded-xl h-[400px] w-full object-cover"
+                          className="rounded-xl h-[450px] w-full object-cover"
                         >
                           <source src={post.media.url} type="video/mp4" />
                           Your browser does not support the video tag.
                         </video>
                       )}
-                      {post.media.type === "audio" && (
-                        <audio controls className="w-full">
-                          <source src={post.media.url} type="audio/mpeg" />
-                          Your browser does not support the audio element.
-                        </audio>
-                      )}
-                      {post.media.type === "file" && (
-                        <a
-                          href={post.media.url}
-                          download={post.media.name}
-                          className="text-blue-500 underline"
-                        >
-                          Download {post.media.name}
-                        </a>
-                      )}
                     </div>
                   )}
                   <div className="flex justify-between text-gray-800 mt-6 text-sm">
-                    <span className="flex ml-10 items-center gap-2">
-                      <BiSolidLike size={20} /> {post.likes}
-                    </span>
+                  <span
+  className="flex ml-10 items-center gap-2 cursor-pointer relative"
+  onMouseEnter={() =>
+    setShowReactionOptions((prev) => ({
+      ...prev,
+      [post.id]: true,
+    }))
+  }
+  onMouseLeave={() =>
+    setShowReactionOptions((prev) => ({
+      ...prev,
+      [post.id]: false,
+    }))
+  }
+>
+  {post.userReaction ? (
+    <span className="text-xl">{getReactionIcon(post.userReaction)}</span>
+  ) : (
+    <BiSolidLike size={20} />
+  )}
+  {post.userId === currentUserId ? post.likes : "Like"}
+  {showReactionOptions[post.id] && (
+    <div className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10">
+      <span
+        onClick={() => handleReaction(post.id, "like")}
+        className="cursor-pointer text-xl"
+      >
+        👍
+      </span>
+      <span
+        onClick={() => handleReaction(post.id, "love")}
+        className="cursor-pointer text-xl"
+      >
+        ❤️
+      </span>
+      <span
+        onClick={() => handleReaction(post.id, "haha")}
+        className="cursor-pointer text-xl"
+      >
+        😂
+      </span>
+      <span
+        onClick={() => handleReaction(post.id, "wow")}
+        className="cursor-pointer text-xl"
+      >
+        😮
+      </span>
+      <span
+        onClick={() => handleReaction(post.id, "sad")}
+        className="cursor-pointer text-xl"
+      >
+        😢
+      </span>
+    </div>
+  )}
+</span>
                     <span className="flex items-center gap-2">
-                      <FaRegCommentDots size={20} /> {post.comments}
+                      <FaRegCommentDots size={20} />
+                      {post.userId === currentUserId
+                        ? post.comments
+                        : "Comment"}
                     </span>
                     <span className="flex mr-10 items-center gap-2">
-                      <FaShare size={20} /> {post.shares}
+                      <FaShare size={20} />
+                      {post.userId === currentUserId ? post.shares : "Share"}
                     </span>
                   </div>
                 </div>
@@ -366,6 +805,41 @@ const Home = () => {
       <div className="w-1/4 moodMaker sticky top-[12rem] right-10 self-start ml-16">
         <HashtagList />
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96">
+            <h3 className="text-xl font-semibold mb-4">Confirm Deletion</h3>
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to delete this post? This action cannot be
+              undone.
+            </p>
+            <div className="flex justify-end gap-4">
+              <button
+                className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                onClick={() => setShowDeleteConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                onClick={() => handleDeletePost(showDeleteConfirm)}
+                disabled={isDeleting === showDeleteConfirm}
+              >
+                {isDeleting === showDeleteConfirm ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

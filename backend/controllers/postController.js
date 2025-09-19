@@ -4,12 +4,11 @@ import { Post } from "../models/post.models.js";
 import { Hashtag } from "../models/hashtag.models.js";
 import cloudinary from "../config/cloudinary.js";
 import fs from "fs";
-import path from "path";
 
-// @route  POST /api/posts/createPost
+// @route  GET /api/posts/createPost
 export const createPost = asyncHandler(async (req, res) => {
   const { content } = req.body;
-  let imageUrl = null;
+  let mediaUrl = null;
 
   console.log("=== POST CREATION STARTED ===");
   console.log("Received data:", { 
@@ -35,7 +34,7 @@ export const createPost = asyncHandler(async (req, res) => {
   }
 
   try {
-    // Handle image upload to Cloudinary if file exists
+    // Handle media upload to Cloudinary if file exists
     if (req.file) {
       try {
         console.log("Processing file upload...");
@@ -51,16 +50,20 @@ export const createPost = asyncHandler(async (req, res) => {
         const username = req.user.username || "unknown";
         console.log("Uploading to Cloudinary for user:", username);
         
+        // Determine resource type based on file mimetype
+        const resourceType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+        
         // Upload to Cloudinary with folder structure: mindsnap/posts/username
         console.log("Starting Cloudinary upload...");
         const result = await cloudinary.uploader.upload(req.file.path, {
           folder: `mindsnap/posts/${username}`,
           use_filename: true,
           unique_filename: true,
+          resource_type: resourceType,
         });
         
-        imageUrl = result.secure_url;
-        console.log("✅ Image uploaded to Cloudinary successfully:", imageUrl);
+        mediaUrl = result.secure_url;
+        console.log("✅ Media uploaded to Cloudinary successfully:", mediaUrl);
         
         // Delete the temporary file
         if (fs.existsSync(req.file.path)) {
@@ -82,7 +85,7 @@ export const createPost = asyncHandler(async (req, res) => {
         
         return res.status(500).json({
           success: false,
-          message: "Failed to upload image to Cloudinary",
+          message: "Failed to upload media to Cloudinary",
           error: uploadError.message
         });
       }
@@ -92,7 +95,7 @@ export const createPost = asyncHandler(async (req, res) => {
     const post = await Post.create({
       user: req.user._id,
       content: content.trim(),
-      image: imageUrl,
+      image: mediaUrl, // Still using 'image' field in database for backward compatibility
     });
 
     // Process hashtags
@@ -143,9 +146,23 @@ export const getPosts = asyncHandler(async (req, res) => {
   try {
     const posts = await Post.find()
       .populate("user", "username profilePicture fullname")
+      .populate({
+        path: "likes",
+        match: { user: req.user._id }, // Only get likes from the current user
+        select: "reactionType"
+      })
       .sort({ createdAt: -1 });
     
-    res.json(posts);
+    // Add userReaction to each post
+    const postsWithReactions = posts.map(post => {
+      const userReaction = post.likes.length > 0 ? post.likes[0].reactionType : null;
+      return {
+        ...post.toObject(),
+        userReaction
+      };
+    });
+
+    res.json(postsWithReactions);
   } catch (error) {
     console.error("Error fetching posts:", error);
     res.status(500).json({
@@ -202,11 +219,25 @@ export const getUserPosts = asyncHandler(async (req, res) => {
 
     const posts = await Post.find({ user: userId })
       .populate("user", "username profilePicture fullname")
+      .populate({
+        path: "likes",
+        match: { user: req.user._id }, // Get current user's reactions
+        select: "reactionType"
+      })
       .sort({ createdAt: -1 });
     
+    // Add userReaction to each post
+    const postsWithReactions = posts.map(post => {
+      const userReaction = post.likes.length > 0 ? post.likes[0].reactionType : null;
+      return {
+        ...post.toObject(),
+        userReaction
+      };
+    });
+
     res.json({
       success: true,
-      posts
+      posts: postsWithReactions
     });
   } catch (error) {
     console.error("Error fetching user posts:", error);
@@ -218,46 +249,6 @@ export const getUserPosts = asyncHandler(async (req, res) => {
   }
 });
 
-// @route  POST /api/posts/:id/like
-export const likePost = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const { reaction } = req.body;
-
-  const post = await Post.findById(id);
-  if (!post) {
-    res.status(404);
-    throw new Error("Post Not Found!");
-  }
-
-  // Check if the user has already liked the post
-  const existingLike = await Like.findOne({ user: req.user._id, targetId: id, targetType: "Post" });
-  if (existingLike) {
-    res.status(400);
-    throw new Error("You have already liked this post!");
-  }
-
-  // Create a new like
-  const like = await Like.create({
-    user: req.user._id,
-    targetType: "Post",
-    targetId: id,
-  });
-
-  // Add the like to the post's likes array
-  post.likes.push(like._id);
-  if (reaction) {
-    post.reactions = post.reactions || {};
-    post.reactions[reaction] = (post.reactions[reaction] || 0) + 1;
-  }
-  await post.save();
-
-  await toggleLike({ params: { targetType: "Post", targetId: id }, user: req.user });
-
-  const updatedPost = await Post.findById(id)
-    .populate("user", "username profilePicture fullname")
-    .populate("likes", "user"); // Populate likes to get user references
-  res.json(updatedPost);
-});
 
 // @route POST /api/posts/:postId/comments/:commentId/like
 export const commentOnPost = asyncHandler(async (req, res) => {
@@ -285,4 +276,51 @@ export const commentOnPost = asyncHandler(async (req, res) => {
     "username profilePicture fullname"
   );
   res.json(updatedPost.comments.id(commentId));
+});
+
+// @route  DELETE /api/posts/:id
+export const deletePost = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const post = await Post.findById(id);
+  if (!post) {
+    res.status(404);
+    throw new Error("Post Not Found!");
+  }
+
+  // Check if the user is the owner of the post
+  if (post.user.toString() !== req.user._id.toString()) {
+    res.status(403);
+    throw new Error("Not authorized to delete this post");
+  }
+
+  // Delete from Cloudinary if there's an image
+  if (post.image) {
+    try {
+      // Extract public_id from Cloudinary URL
+      const urlParts = post.image.split('/');
+      const publicId = `mindsnap/posts/${req.user.username}/${urlParts[urlParts.length - 1].split('.')[0]}`;
+      
+      await cloudinary.uploader.destroy(publicId);
+      console.log("Deleted image from Cloudinary:", publicId);
+    } catch (error) {
+      console.error("Error deleting image from Cloudinary:", error);
+      // Continue with post deletion even if image deletion fails
+    }
+  }
+
+  // Delete the post
+  await Post.findByIdAndDelete(id);
+
+  // Remove post from hashtags
+  const hashtags = await Hashtag.find({ posts: id });
+  for (const hashtag of hashtags) {
+    hashtag.posts = hashtag.posts.filter(postId => postId.toString() !== id);
+    await hashtag.save();
+  }
+
+  res.json({
+    success: true,
+    message: "Post deleted successfully"
+  });
 });

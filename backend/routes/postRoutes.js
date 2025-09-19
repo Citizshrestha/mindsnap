@@ -1,6 +1,6 @@
 // routes/postRoutes.js
 import express from "express";
-import { createPost, getPosts, likePost, commentOnPost } from "../controllers/postController.js";
+import { createPost, getPosts, commentOnPost, deletePost } from "../controllers/postController.js";
 import protect from "../middleware/authMiddleware.js";
 import multer from "multer";
 import path from "path";
@@ -30,24 +30,24 @@ const upload = multer({
     fileSize: 50 * 1024 * 1024 // 50MB limit
   },
   fileFilter: function (req, file, cb) {
-    // Allow images only
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'), false);
-    }
+  // Allow both images and videos
+  if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only image and video files are allowed'), false);
   }
+}
 });
 
 const router = express.Router();
 
-router.post("/createPost", protect, upload.single('image'), (req, res, next) => {
+router.post("/createPost", protect, upload.single('media'), (req, res, next) => {
   console.log('File received:', req.file);
   next();
 }, createPost);
 
 router.get("/getPosts", protect, getPosts);
-router.post("/:id/like", protect, likePost);
+router.delete("/:id", protect, deletePost);
 router.post("/:postId/comments/:commentId/like", protect, commentOnPost);
 
 export default router;

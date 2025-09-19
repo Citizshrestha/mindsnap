@@ -345,6 +345,30 @@ export const unfollowUser = asyncHandler(async (req, res) => {
   });
 });
 
+// @route GET /api/users/:userId/follow-status
+export const getFollowStatus = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const currentUserId = req.user._id;
+
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    return res.status(400).json({ success: false, message: "Invalid user ID" });
+  }
+
+  const targetUser = await User.findById(userId).select("followers");
+  if (!targetUser) {
+    return res.status(404).json({ success: false, message: "User not found" });
+  }
+
+  const isFollowing = targetUser.followers.some((followerId) =>
+    followerId.equals(currentUserId)
+  );
+
+  return res.status(200).json({
+    success: true,
+    isFollowing,
+  });
+});
+
 // @route GET /api/users/:userId/connections
 export const getUserConnections = asyncHandler(async (req, res) => {
   const { userId } = req.params;
@@ -381,6 +405,105 @@ export const getUserConnections = asyncHandler(async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error while fetching connections",
+    });
+  }
+});
+
+// @route GET /api/users/:userId/getPendingFollowRequests
+export const getPendingFollowRequests = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { type } = req.query;
+
+  if (!type || !["followers", "following"].includes(type)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid or missing type parameter. Use 'followers' or 'following'",
+    });
+  }
+
+  const targetUserId = userId ? userId : req.user._id;
+
+  try {
+    const user = await User.findById(targetUserId)
+      .populate("followers", "username fullname profilePicture")
+      .populate("following", "username fullname profilePicture")
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User Not Found!",
+      });
+    }
+
+    let filteredConnections = user[type] || [];
+
+    // ✅ If type is followers, only show those who are not already in following
+    if (type === "followers") {
+      const followingIds = user.following.map(f => f._id.toString());
+      filteredConnections = filteredConnections.filter(
+        follower => !followingIds.includes(follower._id.toString())
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      [type]: filteredConnections,
+    });
+  } catch (error) {
+    console.error(`Error fetching ${type} pending requests:`, error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while fetching pending requests",
+    });
+  }
+});
+
+export const getUserPosts = asyncHandler(async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Validate if userId is provided
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required"
+      });
+    }
+
+    const posts = await Post.find({ user: userId })
+      .populate("user", "username profilePicture fullname")
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      posts
+    });
+  } catch (error) {
+    console.error("Error fetching user posts:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch user posts",
+    });
+  }
+});
+
+// @route  GET /api/users/profile/posts
+export const getMyPosts = asyncHandler(async (req, res) => {
+  try {
+    const posts = await Post.find({ user: req.user._id })
+      .populate("user", "username profilePicture fullname")
+      .sort({ createdAt: -1 });
+    
+    res.json({
+      success: true,
+      posts
+    });
+  } catch (error) {
+    console.error("Error fetching user posts:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch your posts",
     });
   }
 });

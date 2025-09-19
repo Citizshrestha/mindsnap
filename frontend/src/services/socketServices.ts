@@ -198,9 +198,30 @@ class SocketService {
     this.socket?.emit("messageSeen", { messageId, receiverId });
   }
 
-  removeAllListeners(): void {
+  removeAllListeners(): void 
+  {
     this.socket?.removeAllListeners();
   }
+
+sendLikeNotification(notificationData: {
+  recipientId: string;
+  senderId: string;
+  targetType: string;
+  targetId: string;
+  type: string;
+  reactionType?: string; 
+}): void {
+  this.socket?.emit("sendLikeNotification", notificationData);
+}
+onLikeNotification(callback: (data: {
+  recipientId: string;
+  sender: string;
+  targetType: string;
+  targetId: string;
+  type: string;
+}) => void): void {
+  this.socket?.on("likeNotification", callback);
+}
 }
 
 export const socketService = new SocketService();

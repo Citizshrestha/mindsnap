@@ -65,8 +65,11 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/user-tags", userTagRoutes);
 app.use("/api/likes", likeRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/hashtags", hashtagRoutes);
-
+app.use("/api/hashtags", (req, res, next) => {
+  console.log('🔍 Hashtag route accessed:', req.method, req.url);
+  console.log('🔑 Auth header:', req.headers.authorization);
+  next();
+});
 app.use("/api/posts", postRoutes);
 
 // ---------------------- ERROR HANDLER ----------------------
@@ -201,6 +204,44 @@ io.on("connection", (socket) => {
       callback(0);
     }
   });
+ 
+
+
+socket.on("sendLikeNotification", async (data) => {
+  try {
+    const { recipientId, senderId, targetType, targetId, type, reactionType = "like" } = data;
+    
+    // Verify the sender is authenticated
+    const sender = await User.findById(senderId);
+    if (!sender) return;
+    
+    // Create notification in database
+    const notification = await Notification.create({
+      recipient: recipientId,
+      sender: senderId,
+      type: "like",
+      targetType,
+      targetId: { _id: targetId },
+      read: false,
+      message: `${sender.username} reacted to your ${targetType.toLowerCase()} with ${reactionType}`
+    });
+    
+    // Populate the notification
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate("sender", "username profilePicture")
+      .populate("recipient", "username");
+    
+    // Emit to the recipient using the standard newNotification event
+    socket.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+    
+    console.log(`📩 Like notification sent to user_${recipientId}`);
+    
+  } catch (error) {
+    console.error("Error sending like notification:", error);
+  }
+});
+
+
 
   socket.on("disconnect", (reason) => {
     console.log(`❌ Client Disconnected: ${socket.id} - Reason: ${reason}`);

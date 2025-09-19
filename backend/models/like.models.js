@@ -12,6 +12,11 @@ const likeSchema = new mongoose.Schema(
       enum: ["Post", "Comment", "Story", "EmbeddedComment"], // Added EmbeddedComment
       required: true,
     },
+      reactionType: {
+    type: String,
+    default: "like", // Can be: like, love, haha, wow, sad, angry
+    enum: ["like", "love", "haha", "wow", "sad", "angry"]
+  },
     targetId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
@@ -44,5 +49,7 @@ likeSchema.pre("save", async function (next) {
   }
   next();
 });
+
+likeSchema.index({ user: 1, targetType: 1, targetId: 1 }, { unique: true });
 
 export const Like = mongoose.model("Like", likeSchema);

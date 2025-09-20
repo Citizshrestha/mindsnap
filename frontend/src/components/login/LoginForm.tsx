@@ -80,35 +80,39 @@ const LoginForm: React.FC = () => {
       setIsLoading(false);
     }
   };
- const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-    try {
-      setIsLoading(true);
+const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+  try {
+    setIsLoading(true);
 
-      if (!credentialResponse.credential) {
-        throw new Error("No credential received from Google.");
-      }
-
-          // Call our API helper
-    const response = await googleLogin(credentialResponse.credential);
-      
-      localStorage.setItem("accessToken", response.accessToken);
-      localStorage.setItem("userId", response._id);
-      
-      
-      
-      toast.success(`Welcome ${response.username || "User"}!`);
-      navigate("/home");
-    } catch (error) {
-      let errorMessage = "Google login failed";
-      if (axios.isAxiosError(error)) {
-        errorMessage = error.response?.data?.message || errorMessage;
-      }
-      toast.error(errorMessage);
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
+    if (!credentialResponse.credential) {
+      throw new Error("No credential received from Google.");
     }
-  };
+
+    // Call our API helper
+    const response = await googleLogin(credentialResponse.credential);
+    
+    localStorage.setItem("accessToken", response.accessToken);
+    localStorage.setItem("userId", response._id);
+    
+    toast.success(`Welcome ${response.username || "User"}!`);
+    navigate("/home");
+  } catch (error) {
+    let errorMessage = "Google login failed";
+    if (axios.isAxiosError(error)) {
+      errorMessage = error.response?.data?.message || errorMessage;
+      // If the error is "no account found", redirect to register
+      if (errorMessage.includes("No account found")) {
+        toast.info("No account found. Please register first.");
+        navigate("/register");
+        return;
+      }
+    }
+    toast.error(errorMessage);
+    setError(errorMessage);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const togglePasswordVisibility = () => setShowPassword((p) => !p);
   const handleForgotPasswordClick = () => navigate("/forgot-password");

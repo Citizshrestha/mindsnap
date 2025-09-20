@@ -119,75 +119,74 @@ const RegisterForm = () => {
     navigate("/");
   };
 
-  const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
-    console.log("Google Credential Response:", credentialResponse);
-    if (credentialResponse.credential) {
-      try {
-        const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
-        console.log("Google User Decoded:", decoded);
+const handleGoogleSuccess = async (credentialResponse: import('@react-oauth/google').CredentialResponse) => {
+  console.log("Google Credential Response:", credentialResponse);
+  if (credentialResponse.credential) {
+    try {
+      const decoded = jwtDecode<GoogleJwtPayload>(credentialResponse.credential);
+      console.log("Google User Decoded:", decoded);
 
-        if (!decoded.email) {
-          throw new Error("Google Sign Up failed: Email not provided");
-        }
-
-        setIsLoading(true);
-
-        const permission = window.confirm(
-          "MindSnap would like to access your Google account for email and profile information. Do you allow this to register or log in?"
-        );
-        console.log("User response:", permission);
-        if (!permission) {
-          toast.info("Google sign-up cancelled by user.");
-          return;
-        }
-
-        const existsResponse = await checkUserExists(decoded.email);
-        if (!existsResponse.success) {
-          throw new Error(existsResponse.message || "Failed to check user existence");
-        }
-
-        if (existsResponse.exists) {
-          const loginResponse = await axios.post('/api/auth/login', { email: decoded.email });
-          if (!loginResponse.data.success) {
-            throw new Error(loginResponse.data.message || "Login failed");
-          }
-          localStorage.setItem("accessToken", loginResponse.data.accessToken);
-          localStorage.setItem("userId", loginResponse.data._id);
-          localStorage.setItem("googleToken", credentialResponse.credential);
-          localStorage.setItem("googleUser", JSON.stringify(decoded));
-          toast.success(`Welcome back to MindSnap, ${decoded.name || "User"}!`);
-          navigate("/");
-        } else {
-          const username = decoded.email?.split('@')[0] || `user_${Date.now()}`;
-          const registerResponse = await register(
-            decoded.name || "Google User",
-            username,
-            decoded.email,
-            "google-signup"
-          );
-          if (!registerResponse.success) {
-            throw new Error(registerResponse.message || "Registration failed");
-          }
-          localStorage.setItem("accessToken", registerResponse.token);
-          localStorage.setItem("userId", registerResponse._id);
-          localStorage.setItem("googleToken", credentialResponse.credential);
-          localStorage.setItem("googleUser", JSON.stringify(decoded));
-          toast.success(`Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`);
-          navigate("/");
-        }
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : "Failed to process Google Sign Up. Please try again.";
-        console.error("Google Sign Up Error:", err);
-        toast.error(errorMessage);
-        setError(errorMessage);
-      } finally {
-        setIsLoading(false);
+      if (!decoded.email) {
+        throw new Error("Google Sign Up failed: Email not provided");
       }
+
+      setIsLoading(true);
+
+      const permission = window.confirm(
+        "MindSnap would like to access your Google account for email and profile information. Do you allow this to register or log in?"
+      );
+      console.log("User response:", permission);
+      if (!permission) {
+        toast.info("Google sign-up cancelled by user.");
+        return;
+      }
+
+      // First check if user exists
+      const existsResponse = await checkUserExists(decoded.email);
+      if (!existsResponse.success) {
+        throw new Error(existsResponse.message || "Failed to check user existence");
+      }
+
+      if (existsResponse.exists) {
+        // User exists - redirect to login page with a message
+        toast.info("This Google account is already registered. Please log in.");
+        navigate("/");
+        return;
+      }
+
+      // User doesn't exist - proceed with registration
+      const username = decoded.email?.split('@')[0] || `user_${Date.now()}`;
+      const registerResponse = await register(
+        decoded.name || "Google User",
+        username,
+        decoded.email,
+        "google-signup"
+      );
+      
+      if (!registerResponse.success) {
+        throw new Error(registerResponse.message || "Registration failed");
+      }
+      
+      localStorage.setItem("accessToken", registerResponse.token);
+      localStorage.setItem("userId", registerResponse._id);
+      localStorage.setItem("googleToken", credentialResponse.credential);
+      localStorage.setItem("googleUser", JSON.stringify(decoded));
+      toast.success(`Sign Up successful! Welcome to MindSnap, ${decoded.name || "User"}!`);
+      navigate("/home");
+      
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to process Google Sign Up. Please try again.";
+      console.error("Google Sign Up Error:", err);
+      toast.error(errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }
+};
 
   const handleGoogleError = () => {
     const errorMessage = "Google Sign Up failed. Please try again.";

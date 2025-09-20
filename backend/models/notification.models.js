@@ -48,7 +48,8 @@ const notificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compound index for querying notifications by recipient and sorting by creation time
-notificationSchema.index({ recipient: 1, createdAt: -1 });
+// Add index for better performance
+notificationSchema.index({ recipient: 1, read: 1, createdAt: -1 });
+notificationSchema.index({ sender: 1, recipient: 1, type: 1, targetId: 1 }, { unique: true });
 
 export const Notification = mongoose.model("Notification", notificationSchema);

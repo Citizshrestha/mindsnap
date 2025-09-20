@@ -5,10 +5,9 @@ import {Comment} from "../models/comment.models.js";
 import {Story} from "../models/story.models.js";
 import {Notification} from "../models/notification.models.js";
 
-// In your likeController.js, update the toggleLike function
 export const toggleLike = asyncHandler(async (req, res) => {
   const { targetType, targetId } = req.params;
-    const { reactionType = "like" } = req.body; // Get reaction type from request body
+  const { reactionType = "like" } = req.body;
   const userId = req.user._id;
 
   if (!["Post", "Comment", "Story", "EmbeddedComment"].includes(targetType)) {
@@ -50,6 +49,7 @@ export const toggleLike = asyncHandler(async (req, res) => {
     targetType, 
     targetId 
   });
+  
   if (existingLike) {
     // If the same reaction type, remove the like
     if (existingLike.reactionType === reactionType) {
@@ -95,31 +95,41 @@ export const toggleLike = asyncHandler(async (req, res) => {
     }
     
     // Create notification (skip if user is liking their own content)
-    if (ownerId.toString() !== userId.toString()) {
-      try {
-        const notification = await Notification.create({
-          recipient: ownerId,
-          sender: userId,
-          type: "like",
-          targetType,
-          targetId: { _id: targetId },
-          read: false,
-           message: `${req.user.username} reacted to your ${targetType.toLowerCase()} with ${reactionType}`
-        });
-        
-        // Populate the notification for socket emission
-        const populatedNotification = await Notification.findById(notification._id)
-          .populate("sender", "username profilePicture")
-          .populate("recipient", "username");
-        
-        // Emit socket event for real-time notification
-        req.app.get("io").to(`user_${ownerId}`).emit("newNotification", populatedNotification);
-        
-      } catch (notificationError) {
-        console.error("Notification creation error:", notificationError);
-        // Continue even if notification fails
-      }
-    }
+   if (ownerId.toString() !== userId.toString()) {
+  try {
+    // Map reaction types to proper display names
+    const reactionDisplayNames = {
+      like: "liked",
+      love: "loved",
+      haha: "laughed at",
+      wow: "was amazed by",
+      sad: "felt sad about",
+      angry: "got angry at"
+    };
+
+    const notification = await Notification.create({
+      recipient: ownerId,
+      sender: userId,
+      type: "like",
+      targetType,
+      targetId: { _id: targetId },
+      read: false,
+      message: `${req.user.username} ${reactionDisplayNames[reactionType] || 'reacted to'} your ${targetType.toLowerCase()}`
+    });
+    
+    // Populate the notification for socket emission
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate("sender", "username profilePicture")
+      .populate("recipient", "username");
+    
+    // Emit socket event for real-time notification
+    req.app.get("io").to(`user_${ownerId}`).emit("newNotification", populatedNotification);
+    
+  } catch (notificationError) {
+    console.error("Notification creation error:", notificationError);
+    // Continue even if notification fails
+  }
+}
     
     res.json({ 
       message: "Liked successfully",
@@ -129,7 +139,6 @@ export const toggleLike = asyncHandler(async (req, res) => {
   }
 });
 
-// Get all likes for a target
 export const getLikes = asyncHandler(async (req, res) => {
   const { targetType, targetId, postId } = req.params;
   if (!["Post", "Comment", "Story", "EmbeddedComment"].includes(targetType)) {

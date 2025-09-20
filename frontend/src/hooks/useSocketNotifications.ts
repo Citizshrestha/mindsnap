@@ -2,7 +2,11 @@
 import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { socketService } from "../services/socketServices";
-import { setUnreadCount } from "../redux/slices/notificationSlice";
+import { 
+  setUnreadCount, 
+  addNotification, 
+  incrementUnreadCount 
+} from "../redux/slices/notificationSlice";
 
 export const useSocketNotifications = () => {
   const dispatch = useDispatch();
@@ -20,14 +24,20 @@ export const useSocketNotifications = () => {
         
         // Handle new notifications
         socketService.onNotification((notification) => {
+          console.log("📩 New notification received:", notification);
+          
+          // Add notification to the store
+          dispatch(addNotification(notification));
+          
           // Increment unread count for new notifications
           if (!notification.read) {
-            dispatch(setUnreadCount((prev) => prev + 1));
+            dispatch(incrementUnreadCount()); // Fixed: Use action that doesn't need prev value
           }
         });
 
         // Fetch initial unread count
         socketService.getSocket()?.emit("fetchUnreadCount", userId, (count: number) => {
+          console.log("📊 Initial unread count:", count);
           dispatch(setUnreadCount(count));
         });
       } catch (err) {

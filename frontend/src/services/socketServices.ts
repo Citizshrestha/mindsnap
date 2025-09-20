@@ -203,15 +203,36 @@ class SocketService {
     this.socket?.removeAllListeners();
   }
 
+ // services/socketServices.js - Update sendLikeNotification method
 sendLikeNotification(notificationData: {
   recipientId: string;
   senderId: string;
   targetType: string;
   targetId: string;
   type: string;
-  reactionType?: string; 
+  reactionType?: string;
 }): void {
-  this.socket?.emit("sendLikeNotification", notificationData);
+  if (this.socket && this.isConnected) {
+    // Map reaction types to proper display names with proper typing
+    const reactionDisplayNames: Record<string, string> = {
+      like: "liked",
+      love: "loved",
+      haha: "laughed at",
+      wow: "was amazed by",
+      sad: "felt sad about",
+      angry: "got angry at"
+    };
+    
+    const displayReaction = reactionDisplayNames[notificationData.reactionType || 'like'] || 'reacted to';
+    
+    this.socket.emit("sendLikeNotification", {
+      ...notificationData,
+      message: `${notificationData.senderId} ${displayReaction} your ${notificationData.targetType.toLowerCase()}`
+    });
+    console.log("📤 Like notification sent:", notificationData);
+  } else {
+    console.error("❌ Socket not connected, cannot send like notification");
+  }
 }
 onLikeNotification(callback: (data: {
   recipientId: string;
@@ -222,6 +243,10 @@ onLikeNotification(callback: (data: {
 }) => void): void {
   this.socket?.on("likeNotification", callback);
 }
+
+
 }
+
+
 
 export const socketService = new SocketService();

@@ -9,14 +9,14 @@ const likeSchema = new mongoose.Schema(
     },
     targetType: {
       type: String,
-      enum: ["Post", "Comment", "Story", "EmbeddedComment"], // Added EmbeddedComment
+      enum: ["Post", "Comment", "Story", "EmbeddedComment"],
       required: true,
     },
-      reactionType: {
-    type: String,
-    default: "like", // Can be: like, love, haha, wow, sad, angry
-    enum: ["like", "love", "haha", "wow", "sad", "angry"]
-  },
+    reactionType: {
+      type: String,
+      default: "like",
+      enum: ["like", "love", "haha", "wow", "sad", "angry"]
+    },
     targetId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,

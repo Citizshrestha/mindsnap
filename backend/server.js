@@ -9,6 +9,7 @@ import { sendMessage } from "./controllers/messageController.js";
 import multer from "multer";
 import jwt from "jsonwebtoken";
 import { Notification } from "./models/notification.models.js";
+import { User } from "./models/user.models.js";
 
 // Routes
 import authRoutes from "./routes/authRoutes.js";
@@ -195,7 +196,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("fetchUnreadCount", async (userId, callback) => {
+  socket.emit("fetchUnreadCount", async (userId, callback) => {
     try {
       const notifications = await Notification.find({ recipient: userId, read: false });
       callback(notifications.length);
@@ -209,38 +210,78 @@ io.on("connection", (socket) => {
 
 socket.on("sendLikeNotification", async (data) => {
   try {
-    const { recipientId, senderId, targetType, targetId, type, reactionType = "like" } = data;
+    const { recipientId, senderId, targetType, targetId, type, reactionType = "like", message } = data;
     
     // Verify the sender is authenticated
     const sender = await User.findById(senderId);
-    if (!sender) return;
+    if (!sender) {
+      console.error("Sender not found:", senderId);
+      return;
+    }
     
-    // Create notification in database
-    const notification = await Notification.create({
+    // Check if there's an existing like notification for this target
+    const existingNotification = await Notification.findOne({
       recipient: recipientId,
       sender: senderId,
-      type: "like",
       targetType,
-      targetId: { _id: targetId },
-      read: false,
-      message: `${sender.username} reacted to your ${targetType.toLowerCase()} with ${reactionType}`
+      'targetId._id': targetId,
+      type: "like"
     });
     
-    // Populate the notification
-    const populatedNotification = await Notification.findById(notification._id)
-      .populate("sender", "username profilePicture")
-      .populate("recipient", "username");
+    // Map reaction types to proper display names
+    const reactionDisplayNames = {
+      like: "liked",
+      love: "loved",
+      haha: "laughed at",
+      wow: "was amazed by",
+      sad: "felt sad about",
+      angry: "got angry at"
+    };
     
-    // Emit to the recipient using the standard newNotification event
-    socket.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+    const displayReaction = reactionDisplayNames[reactionType] || 'reacted to';
+    const notificationMessage = message || `${sender.username} ${displayReaction} your ${targetType.toLowerCase()}`;
     
-    console.log(`📩 Like notification sent to user_${recipientId}`);
+    if (existingNotification) {
+      // Update existing notification
+      existingNotification.message = notificationMessage;
+      existingNotification.read = false; // Mark as unread again
+      existingNotification.createdAt = new Date(); // Update timestamp
+      await existingNotification.save();
+      
+      // Populate the updated notification
+      const populatedNotification = await Notification.findById(existingNotification._id)
+        .populate("sender", "username profilePicture")
+        .populate("recipient", "username");
+      
+      // Emit to the recipient
+      io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+      console.log(`📩 Like notification updated for user_${recipientId}`);
+    } else {
+      // Create new notification
+      const notification = await Notification.create({
+        recipient: recipientId,
+        sender: senderId,
+        type: "like",
+        targetType,
+        targetId: { _id: targetId },
+        read: false,
+        message: notificationMessage
+      });
+      
+      // Populate the notification
+      const populatedNotification = await Notification.findById(notification._id)
+        .populate("sender", "username profilePicture")
+        .populate("recipient", "username");
+      
+      // Emit to the recipient
+      io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+      console.log(`📩 New like notification sent to user_${recipientId}`);
+    }
     
   } catch (error) {
     console.error("Error sending like notification:", error);
   }
 });
-
 
 
   socket.on("disconnect", (reason) => {

@@ -26,6 +26,7 @@ export interface Notification {
   message: string;
   action?: string;
   isFollowing?: boolean;
+  reactionType?: string; 
 }
 
 interface NotificationProps {
@@ -207,48 +208,75 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
             <IoCloseSharp size={25} />
           </button>
 
-          {notifications.length > 0 ? (
-            notifications.slice(0, 5).map((notification) => {
-              const date = new Date(notification.createdAt);
-              const isCurrentYear = date.getFullYear() === currentYear;
-              const formattedDate = date.toLocaleString("en-US", {
-                day: "numeric",
-                month: "short",
-                year: isCurrentYear ? undefined : "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-              });
+          // Replace the notification display section with this:
+{notifications.length > 0 ? (
+  notifications.slice(0, 5).map((notification) => {
+    const date = new Date(notification.createdAt);
+    const isCurrentYear = date.getFullYear() === currentYear;
+    const formattedDate = date.toLocaleString("en-US", {
+      day: "numeric",
+      month: "short",
+      year: isCurrentYear ? undefined : "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
 
-              return (
-                <div
-                  key={notification._id}
-                  onClick={() => handleNotificationClick(notification)}
-                  className={`p-3 border-b border-gray-200 last:border-0 hover:bg-gray-50 rounded transition-colors flex items-start cursor-pointer ${
-                    !notification.read ? "bg-blue-50" : "bg-white"
-                  }`}
-                >
-                  <img
-                    src={notification.sender.profilePicture || "/default-avatar.png"}
-                    alt={`${notification.sender.username || "Unknown"}'s profile`}
-                    className="w-10 h-10 rounded-full mr-3 object-cover flex-shrink-0"
-                    onError={(e) => (e.currentTarget.src = "/default-avatar.png")}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-gray-800 text-left mb-1">
-                      {notification.message ||
-                        `${notification.sender.username || "Someone"} ${notification.type}d your ${notification.targetType.toLowerCase()}`}
-                    </p>
-                    <span className="text-xs text-left text-gray-500 block mb-2">{formattedDate}</span>
-                 
-                    {notification.type === "follow_back" && <p className="mt-1 text-sm text-green-600">Followed you back!</p>}
-                  </div>
-                </div>
-              );
-            })
-          ) : (
-            <p className="text-sm text-gray-500 py-4 text-center">No notifications yet</p>
-          )}
+    // Format the notification message properly
+    let displayMessage = notification.message;
+    
+    // If message contains raw _id or isn't properly formatted, create a proper message
+    if (!displayMessage || displayMessage.includes('_id') || displayMessage.includes('ObjectId')) {
+      const username = notification.sender.username || "Someone";
+      const reactionType = notification.type === "like" ? "reacted to" : notification.type;
+      const target = notification.targetType.toLowerCase();
+      
+      displayMessage = `${username} ${reactionType} your ${target}`;
+      
+      // For like reactions, include the specific reaction type if available
+      if (notification.type === "like" && notification.reactionType) {
+        const reactionMap: {[key: string]: string} = {
+          'like': 'liked',
+          'love': 'loved',
+          'haha': 'laughed at',
+          'wow': 'was amazed by',
+          'sad': 'felt sad about',
+          'angry': 'felt angry about'
+        };
+        
+        const reactionVerb = reactionMap[notification.reactionType] || 'reacted to';
+        displayMessage = `${username} ${reactionVerb} your ${target}`;
+      }
+    }
+
+    return (
+      <div
+        key={notification._id}
+        onClick={() => handleNotificationClick(notification)}
+        className={`p-3 border-b border-gray-200 last:border-0 hover:bg-gray-50 rounded transition-colors flex items-start cursor-pointer ${
+          !notification.read ? "bg-blue-50" : "bg-white"
+        }`}
+      >
+        <img
+          src={notification.sender.profilePicture || "/default-avatar.png"}
+          alt={`${notification.sender.username || "Unknown"}'s profile`}
+          className="w-10 h-10 rounded-full mr-3 object-cover flex-shrink-0"
+          onError={(e) => (e.currentTarget.src = "/default-avatar.png")}
+        />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-800 text-left mb-1">
+            {displayMessage}
+          </p>
+          <span className="text-xs text-left text-gray-500 block mb-2">{formattedDate}</span>
+       
+          {notification.type === "follow_back" && <p className="mt-1 text-sm text-green-600">Followed you back!</p>}
+        </div>
+      </div>
+    );
+  })
+) : (
+  <p className="text-sm text-gray-500 py-4 text-center">No notifications yet</p>
+)}
 
           {notifications.length > 5 && (
             <button

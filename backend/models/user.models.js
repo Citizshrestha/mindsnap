@@ -1,7 +1,7 @@
-import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
-const userSchema = new mongoose.Schema(
+const userSchema = new mongoose.Schema (
   {
     fullname: {
       type: String,
@@ -17,43 +17,47 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true, 
+      unique: true,
       trim: true,
     },
     password: {
       type: String,
-      required: [true, "Please enter a password"],
+      required: [true, 'Please enter a password'],
       minlength: 6,
       trim: true,
     },
     gender: {
       type: String,
-      enum: ['male','female','others',''],
-      default: "",
+      enum: ['male', 'female', 'others', ''],
+      default: '',
     },
-    dob:{
+    dob: {
       type: Date,
       default: null,
     },
     profilePicture: {
       type: String,
-      default: "https://example.com/default-profile-picture.png",
     },
+    coverImage: {
+      type: String,
+      default: 'https://example.com/default-cover-image.png',
+    },
+
     followers: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: 'User',
       },
     ],
     following: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+        ref: 'User',
       },
     ],
     verifyOtp: {
       type: String,
-      default: "",
+      default: '',
     },
     verifyOtpExpireAt: {
       type: Number,
@@ -65,8 +69,8 @@ const userSchema = new mongoose.Schema(
     },
     resetOtp: {
       type: String,
-      
-      default: "",
+
+      default: '',
     },
     resetOtpExpireAt: {
       type: Number,
@@ -100,59 +104,62 @@ const userSchema = new mongoose.Schema(
     ],
     vibe: {
       type: String,
-      default: "",
+      default: '',
     },
     vibeDescription: {
       type: String,
-      default: "",
+      default: '',
     },
     aboutMe: {
       type: String,
-      default: "",
+      default: '',
     },
     Posts: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Post",
+        ref: 'Post',
       },
     ],
   },
-  { timestamps: true }
+  {timestamps: true}
 );
 
 // Hash the password before saving the user document
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+userSchema.pre ('save', async function (next) {
+  if (!this.isModified ('password')) return next ();
 
   try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
+    const salt = await bcrypt.genSalt (10);
+    this.password = await bcrypt.hash (this.password, salt);
+    next ();
   } catch (error) {
-    return next(error); // Pass error to Mongoose error handling
+    return next (error); // Pass error to Mongoose error handling
   }
 });
 
 // Method to match passwords
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  return await bcrypt.compare (enteredPassword, this.password);
 };
 
 // Method to check if OTP can be sent or not
 userSchema.methods.canSendOtp = function () {
-  const now = Date.now();
+  const now = Date.now ();
   const oneHourInMs = 60 * 60 * 1000;
   const oneHourAgo = now - oneHourInMs;
 
   // Reset window if expired or first attempt
   if (!this.lastOtpAttempt || this.lastOtpAttempt < oneHourAgo) {
     this.otpAttempts = 0;
-    return { canSend: true, attemptsLeft: 3, timeLeft: 0 };
+    return {canSend: true, attemptsLeft: 3, timeLeft: 0};
   }
 
   if (this.otpAttempts >= 3) {
-    const timeLeft = Math.max(0, Math.ceil(((this.lastOtpAttempt + oneHourInMs) - now) / (1000 * 60)));
-    return { canSend: false, attemptsLeft: 0, timeLeft };
+    const timeLeft = Math.max (
+      0,
+      Math.ceil ((this.lastOtpAttempt + oneHourInMs - now) / (1000 * 60))
+    );
+    return {canSend: false, attemptsLeft: 0, timeLeft};
   }
 
   return {
@@ -162,4 +169,4 @@ userSchema.methods.canSendOtp = function () {
   };
 };
 
-export const User = mongoose.model("User", userSchema);
+export const User = mongoose.model ('User', userSchema);

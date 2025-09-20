@@ -9,7 +9,7 @@ import { Notification } from "../models/notification.models.js";
 // @route GET /api/users/profile
 export const getUserProfileInfo = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).select(
-    "fullname username postsCount profilePicture aboutMe vibe vibeDescription followers following"
+    "fullname username postsCount coverImage profilePicture aboutMe vibe vibeDescription followers following"
   );
 
   if (!user) {
@@ -24,6 +24,7 @@ export const getUserProfileInfo = asyncHandler(async (req, res) => {
     username: user.username,
     fullname: user.fullname,
     profilePicture: user.profilePicture,
+    coverImage: user.coverImage,
     aboutMe: user.aboutMe,
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,
@@ -35,7 +36,7 @@ export const getUserProfileInfo = asyncHandler(async (req, res) => {
 
 // @route PATCH /api/users/update-profile
 export const updateUserProfile = asyncHandler(async (req, res) => {
-  const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture } = req.body;
+  const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture, coverImage  } = req.body;
 
   const user = await User.findById(req.user._id);
   if (!user) {
@@ -69,6 +70,23 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     }
     user.profilePicture = profilePicture;
   }
+  if (coverImage !== undefined && coverImage !== user.coverImage) {
+  if (user.coverImage) {
+    const publicId = user.coverImage.split("/").pop()?.split(".")[0];
+    if (publicId) {
+      try {
+        const res = await cloudinary.uploader.destroy(publicId);
+        if (res.result !== "ok") {
+          console.warn(`Failed to delete Cloudinary cover image: ${publicId}`);
+        }
+      } catch (err) {
+        console.error("Error deleting old cover image from Cloudinary:", err);
+      }
+    }
+  }
+  user.coverImage = coverImage;
+}
+
 
   await user.save();
 
@@ -84,6 +102,7 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     aboutMe: user.aboutMe,
     postsCount: user.postsCount,
     profilePicture: user.profilePicture,
+    coverImage: user.coverImage,
   });
 });
 
@@ -128,7 +147,7 @@ export const getUserById = asyncHandler(async (req, res) => {
   const { userId } = req.params;
 
   const user = await User.findById(userId).select(
-    "fullname username postsCount profilePicture aboutMe vibe vibeDescription followers following"
+    "fullname username postsCount profilePicture coverImage aboutMe vibe vibeDescription followers following"
   );
   
   if (!user) {
@@ -143,6 +162,7 @@ export const getUserById = asyncHandler(async (req, res) => {
     username: user.username,
     fullname: user.fullname,
     profilePicture: user.profilePicture,
+    coverImage: user.coverImage,
     aboutMe: user.aboutMe,
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,

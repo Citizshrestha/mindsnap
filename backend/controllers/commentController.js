@@ -1,108 +1,151 @@
+// controllers/commentController.js
 import { asyncHandler } from "../utils/asyncHandler.js";
-import {Post} from "../models/post.models.js";
-import {Comment} from "../models/comment.models.js";
-import {Notification} from "../models/notification.models.js";
-import { toggleLike } from "./likeController.js";
+import { Post } from "../models/post.models.js";
+import { Notification } from "../models/notification.models.js";
 
 // Create a new comment on a post (embedded in Post)
 export const createComment = asyncHandler(async (req, res) => {
   const { postId } = req.params;
-  const { content, parentComment } = req.body;
+  const { content } = req.body;
 
-  const post = await Post.findById(postId);
-  if (!post) {
-    res.status(404);
-    throw new Error("Post not found");
-  }
-
-  const comment = {
-    user: req.user._id,
+  console.log("=== COMMENT CREATION STARTED ===");
+  console.log("Received data:", { 
+    postId, 
     content,
-    createdAt: new Date(),
-  };
+    user: req.user ? {
+      _id: req.user._id,
+      username: req.user.username
+    } : 'No user'
+  });
 
-  post.comments.push(comment);
-  await post.save();
-
-  // Create a notification for the post owner (if not the commenter)
-  if (post.user.toString() !== req.user._id.toString()) {
-    await Notification.create({
-      recipient: post.user,
-      sender: req.user._id,
-      type: "comment",
-      targetType: "Post",
-      targetId: postId,
+  if (!content || content.trim() === "") {
+    console.log("Content validation failed");
+    return res.status(400).json({
+      success: false,
+      message: "Comment content is required",
     });
   }
 
-  const newComment = post.comments[post.comments.length - 1];
-  const populatedPost = await Post.findById(postId)
-    .populate("user", "username profilePicture")
-    .populate("comments.user", "username profilePicture");
-  res.status(201).json(populatedPost.comments.id(newComment._id));
+  try {
+    const post = await Post.findById(postId);
+    if (!post) {
+      console.log("Post not found with ID:", postId);
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    console.log("Post found:", post._id);
+    
+    const comment = {
+      user: req.user._id,
+      content: content.trim(),
+      createdAt: new Date(),
+      likes: [],
+    };
+
+    post.comments.push(comment);
+    await post.save();
+
+    console.log("Comment saved successfully");
+    
+    // ... rest of the code
+  } catch (error) {
+    console.error("Error in createComment:", error);
+    console.error("Error stack:", error.stack);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
 });
 
 // Get all comments for a post (embedded in Post)
 export const getComments = asyncHandler(async (req, res) => {
   const { postId } = req.params;
-  const post = await Post.findById(postId).populate({
-    path: "comments.user",
-    select: "username profilePicture",
-  });
+  
+  console.log("Fetching comments for post:", postId);
 
-  if (!post) {
-    res.status(404);
-    throw new Error("Post not found");
+  try {
+    const post = await Post.findById(postId)
+      .populate("comments.user", "username profilePicture")
+      .select("comments");
+
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
+    }
+
+    // Sort comments by createdAt descending (newest first)
+    const sortedComments = post.comments.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    console.log("Found comments:", sortedComments.length);
+    res.json(sortedComments);
+  } catch (error) {
+    console.error("Error in getComments:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
-
-  res.json(post.comments);
 });
 
-// Like or unlike a comment (standalone or embedded)
+// Like or unlike a comment (embedded)
 export const likeComment = asyncHandler(async (req, res) => {
-  const { commentId, postId } = req.params; // postId is required for EmbeddedComment
+  const { commentId, postId } = req.params;
 
-  let comment;
-  let targetType;
-  if (postId) {
-    // Embedded comment
+  console.log("Liking comment:", commentId, "in post:", postId);
+
+  try {
     const post = await Post.findById(postId);
     if (!post) {
-      res.status(404);
-      throw new Error("Post not found");
+      return res.status(404).json({
+        success: false,
+        message: "Post not found",
+      });
     }
-    comment = post.comments.id(commentId);
-    if (!comment) {
-      res.status(404);
-      throw new Error("Embedded Comment not found");
-    }
-    targetType = "EmbeddedComment";
-  } else {
-    // Standalone comment
-    comment = await Comment.findById(commentId);
-    if (!comment) {
-      res.status(404);
-      throw new Error("Standalone Comment not found");
-    }
-    targetType = "Comment";
-  }
 
-  await toggleLike({
-    params: { targetType, targetId: commentId, postId: postId || undefined },
-    user: req.user,
-  });
+    const comment = post.comments.id(commentId);
+    if (!comment) {
+      return res.status(404).json({
+        success: false,
+        message: "Comment not found",
+      });
+    }
 
-  if (targetType === "EmbeddedComment") {
-    const updatedPost = await Post.findById(postId).populate(
-      "comments.user",
-      "username profilePicture"
-    );
-    res.json(updatedPost.comments.id(commentId));
-  } else {
-    const updatedComment = await Comment.findById(commentId).populate(
-      "user",
-      "username profilePicture"
-    );
+    // Toggle like
+    const likeIndex = comment.likes.indexOf(req.user._id);
+    if (likeIndex === -1) {
+      // Like the comment
+      comment.likes.push(req.user._id);
+    } else {
+      // Unlike the comment
+      comment.likes.splice(likeIndex, 1);
+    }
+
+    await post.save();
+
+    // Return updated comment
+    const updatedPost = await Post.findById(postId)
+      .populate("comments.user", "username profilePicture")
+      .populate("comments.likes", "username");
+
+    const updatedComment = updatedPost.comments.id(commentId);
+    
     res.json(updatedComment);
+  } catch (error) {
+    console.error("Error in likeComment:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 });

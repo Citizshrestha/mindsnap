@@ -1,11 +1,11 @@
 // models/post.models.js
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 
-const postSchema = new mongoose.Schema(
+const postSchema = new mongoose.Schema (
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
     },
     content: {
@@ -14,37 +14,51 @@ const postSchema = new mongoose.Schema(
       trim: true,
     },
     image: {
-      type: String, // This will store the Cloudinary URL
+      type: String,
     },
     likes: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Like",
+        ref: 'Like',
       },
     ],
     comments: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Comment",
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          required: true,
+        },
+        content: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+        likes: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+          },
+        ],
       },
     ],
+
     shares: {
       type: Number,
       default: 0,
     },
-    reactions: {
-      type: Map,
-      of: Number,
-      default: {},
-    },
     tags: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Tag",
+        ref: 'Tag',
       },
     ],
   },
-  { timestamps: true }
+  {timestamps: true}
 );
 
-export const Post = mongoose.model("Post", postSchema);
+export const Post = mongoose.model ('Post', postSchema);

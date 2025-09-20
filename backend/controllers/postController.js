@@ -141,24 +141,47 @@ export const createPost = asyncHandler(async (req, res) => {
   }
 });
 
-// @route  GET /api/posts/getPosts
 export const getPosts = asyncHandler(async (req, res) => {
   try {
     const posts = await Post.find()
       .populate("user", "username profilePicture fullname")
       .populate({
         path: "likes",
-        match: { user: req.user._id }, // Only get likes from the current user
-        select: "reactionType"
+        populate: {
+          path: "user",
+          select: "username profilePicture"
+        }
+      })
+      .populate({
+        path: "comments.user",
+        select: "username profilePicture"
       })
       .sort({ createdAt: -1 });
     
     // Add userReaction to each post
     const postsWithReactions = posts.map(post => {
-      const userReaction = post.likes.length > 0 ? post.likes[0].reactionType : null;
+      // Find the current user's like/reaction
+      const userLike = post.likes.find(like => 
+        like.user && like.user._id.toString() === req.user._id.toString()
+      );
+      
+      // Count reactions by type
+      const reactionCounts = {};
+      post.likes.forEach(like => {
+        if (like.reactionType) {
+          reactionCounts[like.reactionType] = (reactionCounts[like.reactionType] || 0) + 1;
+        }
+      });
+
       return {
         ...post.toObject(),
-        userReaction
+        userReaction: userLike ? userLike.reactionType : null,
+        likes: post.likes.length,
+        reactionCounts, // Include detailed reaction counts
+        comments: post.comments.map(comment => ({
+          ...comment.toObject(),
+          // Add user reaction for comments too if needed
+        }))
       };
     });
 
@@ -171,9 +194,6 @@ export const getPosts = asyncHandler(async (req, res) => {
     });
   }
 });
-
-// controllers/userController.js
-
 // @route  GET /api/users/profile/posts
 export const getMyPosts = asyncHandler(async (req, res) => {
   try {
@@ -201,7 +221,6 @@ export const getUserPosts = asyncHandler(async (req, res) => {
   try {
     const { userId } = req.params;
     
-    // Validate if userId is provided and is a valid ObjectId
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -209,7 +228,6 @@ export const getUserPosts = asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if userId is a valid MongoDB ObjectId
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({
         success: false,
@@ -221,17 +239,30 @@ export const getUserPosts = asyncHandler(async (req, res) => {
       .populate("user", "username profilePicture fullname")
       .populate({
         path: "likes",
-        match: { user: req.user._id }, // Get current user's reactions
-        select: "reactionType"
+        populate: {
+          path: "user",
+          select: "username profilePicture"
+        }
       })
       .sort({ createdAt: -1 });
     
-    // Add userReaction to each post
     const postsWithReactions = posts.map(post => {
-      const userReaction = post.likes.length > 0 ? post.likes[0].reactionType : null;
+      const userLike = post.likes.find(like => 
+        like.user && like.user._id.toString() === req.user._id.toString()
+      );
+      
+      const reactionCounts = {};
+      post.likes.forEach(like => {
+        if (like.reactionType) {
+          reactionCounts[like.reactionType] = (reactionCounts[like.reactionType] || 0) + 1;
+        }
+      });
+
       return {
         ...post.toObject(),
-        userReaction
+        userReaction: userLike ? userLike.reactionType : null,
+        likes: post.likes.length,
+        reactionCounts
       };
     });
 

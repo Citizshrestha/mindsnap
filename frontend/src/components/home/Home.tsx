@@ -18,6 +18,8 @@ import {
   FaShare,
   FaEllipsisV,
   FaVideo,
+  FaPaperPlane,
+  FaSmile
 } from "react-icons/fa";
 import { BiSolidLike } from "react-icons/bi";
 import { useDispatch, useSelector } from "react-redux";
@@ -41,13 +43,37 @@ export interface Post {
     url: string;
     name?: string;
   } | null;
-  userId: string; 
-  userReaction?: string;
+  userId: string;
+  userReaction: string | null;
+  reactionCounts?: { // Add reaction counts
+    [key: string]: number;
+  };
 }
 
 interface Emoji {
   native: string;
   id: string;
+}
+
+interface Comment {
+  _id: string;
+  user: {
+    _id: string;
+    username: string;
+    profilePicture: string;
+  };
+  content: string;
+  createdAt: string;
+}
+
+interface CommentState {
+  [key: string]: {
+    content: string;
+    showInput: boolean;
+    comments: Comment[];
+    isSubmitting: boolean;
+    showCommentEmojiPicker: boolean;
+  };
 }
 
 const Home = () => {
@@ -79,22 +105,33 @@ const Home = () => {
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const commentEmojiPickerRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
-
+  const [commentStates, setCommentStates] = useState<CommentState>({});
+  const [expandedComments, setExpandedComments] = useState<{
+    [key: string]: boolean;
+  }>({});
 
   // Function to get reaction icon based on reaction type
-const getReactionIcon = (reactionType: string) => {
-  switch (reactionType) {
-    case "love": return "❤️";
-    case "haha": return "😂";
-    case "wow": return "😮";
-    case "sad": return "😢";
-    case "angry": return "😠";
-    default: return "👍"; // Default to like
-  }
-};
+  const getReactionIcon = (reactionType: string) => {
+    switch (reactionType) {
+      case "love":
+        return "❤️";
+      case "haha":
+        return "😂";
+      case "wow":
+        return "😮";
+      case "sad":
+        return "😢";
+      case "angry":
+        return "😠";
+      default:
+        return "👍"; // Default to like
+    }
+  };
+
   // Add socket connection on component mount
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -112,10 +149,171 @@ const getReactionIcon = (reactionType: string) => {
       }
     };
   }, [currentUserId]);
+
   const getAvatarByGender = (gender: string) => {
     if (gender?.toLowerCase() === "male") return MaleAvatar;
     else if (gender?.toLowerCase() === "female") return FemaleAvatar;
     else return DefaultAvatar;
+  };
+
+  const handleCommentChange = (postId: string, content: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...(prev[postId] || { comments: [], isSubmitting: false, showCommentEmojiPicker: false }),
+        content,
+      },
+    }));
+  };
+
+  const handleSubmitComment = async (postId: string) => {
+    try {
+      console.log("=== SUBMITTING COMMENT DEBUG ===");
+      console.log("Post ID:", postId);
+      console.log("Comment content:", commentStates[postId]?.content);
+      
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          isSubmitting: true,
+        },
+      }));
+
+      const response = await axiosClient.post(
+        `/api/comments/posts/${postId}/comments`,
+        { content: commentStates[postId]?.content },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      console.log("Comment response:", response.data);
+      
+      if (response.data) {
+        // Update the post's comment count
+        setPosts((prevPosts) => {
+          const updatedPosts = prevPosts.map((post) => {
+            if (post.id === postId) {
+              const newCommentCount = post.comments + 1;
+              console.log(`Updating post ${postId} comments from ${post.comments} to ${newCommentCount}`);
+              return { ...post, comments: newCommentCount };
+            }
+            return post;
+          });
+          
+          console.log("Updated posts with new comment count:", updatedPosts);
+          return updatedPosts;
+        });
+
+        // Add the new comment to the state
+        setCommentStates((prev) => ({
+          ...prev,
+          [postId]: {
+            ...prev[postId],
+            content: "",
+            showInput: false,
+            showCommentEmojiPicker: false,
+            comments: [response.data, ...(prev[postId]?.comments || [])],
+            isSubmitting: false,
+          },
+        }));
+
+        toast.success("Comment added successfully!");
+      }
+    } catch (error: any) {
+      console.error("Error adding comment:", error);
+      
+      // More detailed error logging
+      if (error.response) {
+        console.error("Error response data:", error.response.data);
+        console.error("Error response status:", error.response.status);
+        toast.error(error.response.data.message || "Failed to add comment");
+      } else if (error.request) {
+        console.error("Error request:", error.request);
+        toast.error("Network error. Please check your connection.");
+      } else {
+        console.error("Error message:", error.message);
+        toast.error("Failed to add comment");
+      }
+      
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          isSubmitting: false,
+        },
+      }));
+    }
+  };
+
+  const fetchComments = async (postId: string) => {
+    try {
+      const response = await axiosClient.get(
+        `/api/comments/posts/${postId}/comments`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...(prev[postId] || {
+            content: "",
+            showInput: false,
+            isSubmitting: false,
+            showCommentEmojiPicker: false,
+          }),
+          comments: response.data,
+        },
+      }));
+
+      setExpandedComments((prev) => ({ ...prev, [postId]: true }));
+    } catch (error) {
+      console.error("Error fetching comments:", error);
+      toast.error("Failed to load comments");
+    }
+  };
+
+  const toggleComments = (postId: string) => {
+    if (!expandedComments[postId]) {
+      fetchComments(postId);
+    } else {
+      setExpandedComments((prev) => ({ ...prev, [postId]: false }));
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          showCommentEmojiPicker: false,
+        },
+      }));
+    }
+  };
+
+  const toggleCommentEmojiPicker = (postId: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        showCommentEmojiPicker: !prev[postId]?.showCommentEmojiPicker,
+      },
+    }));
+  };
+
+  const handleCommentEmojiSelect = (emoji: Emoji, postId: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        content: (prev[postId]?.content || "") + emoji.native,
+        showCommentEmojiPicker: false,
+      },
+    }));
   };
 
   const formatTime = (date: string | Date) => {
@@ -164,33 +362,57 @@ const getReactionIcon = (reactionType: string) => {
           },
         });
 
-        // The backend returns the posts array directly, not nested in a 'posts' property
-        const fetchedPosts = res.data;
+        console.log("=== FETCHED POSTS DEBUG ===");
+        console.log("Raw response data:", res.data);
+        
+        const formattedPosts: Post[] = res.data.map((post: any) => {
+          // Debug the post object to see what's coming from backend
+          console.log("Post from backend:", post);
+          console.log("Comments:", post.comments, "Type:", typeof post.comments);
+          
+          // FIX: Handle both array and number types for comments
+          let commentCount = 0;
+          if (typeof post.comments === 'number') {
+            commentCount = post.comments;
+          } else if (Array.isArray(post.comments)) {
+            commentCount = post.comments.length;
+          }
+          
+          const formattedPost = {
+            id: post._id,
+            caption: post.content,
+            media: post.image
+              ? {
+                  type: post.image.includes("/video/")
+                    ? ("video" as const)
+                    : ("image" as const),
+                  url: post.image,
+                  name: post.image.split("/").pop(),
+                }
+              : null,
+            likes: post.likes || 0,
+            comments: commentCount, // Use the correct comment count
+            shares: post.shares || 0,
+            time: formatTime(post.createdAt),
+            profilePicture: post.user?.profilePicture || DefaultAvatar,
+            username: post.user?.username
+              ? `@${post.user.username}`
+              : "@UnknownUser",
+            name: post.user?.fullname || "Unknown User",
+            userId: post.user?._id || "",
+            userReaction: post.userReaction || null,
+            reactionCounts: post.reactionCounts || {}, // Add reaction counts
+          };
+          
+          console.log("Formatted post comment count:", formattedPost.comments);
+          console.log("User reaction:", formattedPost.userReaction);
+          console.log("Reaction counts:", formattedPost.reactionCounts);
+          return formattedPost;
+        });
 
-        const formattedPosts: Post[] = fetchedPosts.map((post: any) => ({
-          id: post._id,
-          caption: post.content,
-          media: post.image
-            ? {
-                type: post.image.includes("/video/")
-                  ? ("video" as const)
-                  : ("image" as const),
-                url: post.image,
-                name: post.image.split("/").pop(),
-              }
-            : null,
-          likes: post.likes?.length || 0,
-          comments: post.comments?.length || 0,
-          shares: post.shares || 0,
-          time: formatTime(post.createdAt),
-          profilePicture: post.user?.profilePicture || DefaultAvatar,
-          username: post.user?.username
-            ? `@${post.user.username}`
-            : "@UnknownUser",
-          name: post.user?.fullname || "Unknown User",
-          userId: post.user?._id || "", // Add userId to identify post owner
-          userReaction: post.userReaction || undefined
-        }));
+        console.log("All formatted posts:", formattedPosts);
+        console.log("Current user ID from Redux:", currentUserId);
+        console.log("===========================");
 
         setPosts(formattedPosts);
       } catch (err: unknown) {
@@ -220,6 +442,21 @@ const getReactionIcon = (reactionType: string) => {
       }
 
       if (
+        commentEmojiPickerRef.current &&
+        !commentEmojiPickerRef.current.contains(event.target as Node)
+      ) {
+        Object.keys(commentStates).forEach(postId => {
+          setCommentStates(prev => ({
+            ...prev,
+            [postId]: {
+              ...prev[postId],
+              showCommentEmojiPicker: false
+            }
+          }));
+        });
+      }
+
+      if (
         optionsMenuRef.current &&
         !optionsMenuRef.current.contains(event.target as Node)
       ) {
@@ -229,7 +466,7 @@ const getReactionIcon = (reactionType: string) => {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [commentStates]);
 
   const handleEmojiSelect = (emoji: Emoji) => {
     if (textareaRef.current) {
@@ -249,7 +486,6 @@ const getReactionIcon = (reactionType: string) => {
   ) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Check file size (max 50MB)
       if (file.size > 50 * 1024 * 1024) {
         toast.error("File size must be less than 50MB");
         return;
@@ -274,16 +510,9 @@ const getReactionIcon = (reactionType: string) => {
 
       if (selectedMedia) {
         formData.append("media", selectedMedia);
-        console.log(
-          "Selected media:",
-          selectedMedia.name,
-          selectedMedia.type,
-          selectedMedia.size
-        );
       }
 
       try {
-        console.log("Sending post request...");
         const response = await axiosClient.post(
           "/api/posts/createPost",
           formData,
@@ -294,8 +523,6 @@ const getReactionIcon = (reactionType: string) => {
             },
           }
         );
-
-        console.log("Post created successfully:", response.data);
 
         if (response.data.success) {
           const newPostData = response.data.data;
@@ -322,6 +549,8 @@ const getReactionIcon = (reactionType: string) => {
               : "@CurrentUser",
             name: newPostData.user?.fullname || fullname || "Current User",
             userId: newPostData.user?._id || currentUserId || "",
+            userReaction: null,
+            reactionCounts: {},
           };
 
           setPosts((prevPosts) => [newPost, ...prevPosts]);
@@ -349,12 +578,6 @@ const getReactionIcon = (reactionType: string) => {
           };
         };
 
-        console.error("Post creation error details:", {
-          message: error.message,
-          status: error.response?.status,
-          data: error.response?.data,
-        });
-
         const errorMessage =
           error.response?.data?.error ||
           error.response?.data?.message ||
@@ -375,58 +598,78 @@ const getReactionIcon = (reactionType: string) => {
       setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
-const handleReaction = async (postId: string, reactionType: string = "like") => {
-  try {
-    const response = await axiosClient.post(
-      `/api/likes/react/Post/${postId}/${reactionType}`,
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-        },
-      }
-    );
+  const handleReaction = async (
+    postId: string,
+    reactionType: string = "like"
+  ) => {
+    try {
+      const response = await axiosClient.post(
+        `/api/likes/toggle/Post/${postId}`,
+        { reactionType },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
 
-    // Update the post's like count and user reaction
-    setPosts((prevPosts) =>
-      prevPosts.map((post) =>
-        post.id === postId
-          ? {
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            const updatedPost = {
               ...post,
-              likes: response.data.liked
-                ? post.likes + 1
-                : Math.max(0, post.likes - 1),
-              userReaction: response.data.liked ? reactionType : undefined
-            }
-          : post
-      )
-    );
+              userReaction: response.data.liked ? reactionType : null,
+            };
 
-    if (response.data.liked) {
-      // find the post to get the owners id
-      const likedPost = posts.find((post) => post.id === postId);
-      if (likedPost && likedPost.userId !== currentUserId) {
-        socketService.sendLikeNotification({
-          recipientId: likedPost.userId,
-          senderId: currentUserId,
-          targetType: "Post",
-          targetId: postId,
-          type: "like",
-          reactionType: reactionType // Include reaction type in notification
-        });
+            // Update reaction counts
+            if (response.data.liked) {
+              // Adding a reaction
+              updatedPost.likes = post.likes + 1;
+              updatedPost.reactionCounts = {
+                ...post.reactionCounts,
+                [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1
+              };
+            } else {
+              // Removing a reaction
+              updatedPost.likes = Math.max(0, post.likes - 1);
+              if (post.reactionCounts?.[reactionType]) {
+                updatedPost.reactionCounts = {
+                  ...post.reactionCounts,
+                  [reactionType]: Math.max(0, (post.reactionCounts[reactionType] || 0) - 1)
+                };
+              }
+            }
+
+            return updatedPost;
+          }
+          return post;
+        })
+      );
+
+      if (response.data.liked) {
+        const likedPost = posts.find((post) => post.id === postId);
+        if (likedPost && likedPost.userId !== currentUserId) {
+          socketService.sendLikeNotification({
+            recipientId: likedPost.userId,
+            senderId: currentUserId,
+            targetType: "Post",
+            targetId: postId,
+            type: "like",
+            reactionType: reactionType,
+          });
+        }
       }
+      toast.success(response.data.message);
+    } catch (err: unknown) {
+      const error = err as {
+        message?: string;
+        response?: { data?: { message?: string } };
+      };
+      console.error("Reaction error:", error);
+      toast.error(error.response?.data?.message || "Failed to add reaction");
     }
-    toast.success(response.data.message);
-  } catch (err: unknown) {
-    const error = err as {
-      message?: string;
-      response?: { data?: { message?: string } };
-    };
-    console.error("Reaction error:", error);
-    toast.error(error.response?.data?.message || "Failed to add reaction");
-  }
-  setShowReactionOptions((prev) => ({ ...prev, [postId]: false }));
-};
+    setShowReactionOptions((prev) => ({ ...prev, [postId]: false }));
+  };
 
   const toggleOptionsMenu = (postId: string) => {
     setShowOptionsMenu(showOptionsMenu === postId ? null : postId);
@@ -434,7 +677,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
 
   const handleSavePost = async (postId: string) => {
     try {
-      // Implement save post functionality
       console.log(`${postId} has been saved!`);
       toast.success("Post saved!");
       setShowOptionsMenu(null);
@@ -445,7 +687,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
   };
 
   const handleHidePost = (postId: string) => {
-    // Hide post from current view (frontend only)
     setPosts(posts.filter((post) => post.id !== postId));
     toast.success("Post hidden");
     setShowOptionsMenu(null);
@@ -453,7 +694,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
 
   const handleReportPost = async (postId: string) => {
     try {
-      // Implement report post functionality
       console.log(`${postId} has been reported`);
       toast.success("Post reported. Our team will review it shortly.");
       setShowOptionsMenu(null);
@@ -472,7 +712,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
         },
       });
 
-      // Remove post from frontend
       setPosts(posts.filter((post) => post.id !== postId));
       toast.success("Post deleted successfully");
       setShowOptionsMenu(null);
@@ -535,7 +774,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
               {showPostOptions && (
                 <div className="flex items-center justify-between mt-4 p-2">
                   <div className="flex gap-4 text-[#611DD0]">
-                    {/* Image upload */}
                     <input
                       type="file"
                       ref={imageInputRef}
@@ -551,7 +789,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
                       <span className="text-2xl">📸</span>
                     </button>
 
-                    {/* Video upload */}
                     <input
                       type="file"
                       ref={videoInputRef}
@@ -667,7 +904,6 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
                             Report post
                           </button>
 
-                          {/* Show delete option only for post owner */}
                           {post.userId === currentUserId && (
                             <button
                               className="w-full text-left p-2 hover:bg-red-50 rounded-md text-red-600 border-t border-gray-200 mt-2"
@@ -727,73 +963,278 @@ const handleReaction = async (postId: string, reactionType: string = "like") => 
                     </div>
                   )}
                   <div className="flex justify-between text-gray-800 mt-6 text-sm">
-                  <span
-  className="flex ml-10 items-center gap-2 cursor-pointer relative"
-  onMouseEnter={() =>
-    setShowReactionOptions((prev) => ({
-      ...prev,
-      [post.id]: true,
-    }))
-  }
-  onMouseLeave={() =>
-    setShowReactionOptions((prev) => ({
-      ...prev,
-      [post.id]: false,
-    }))
-  }
->
-  {post.userReaction ? (
-    <span className="text-xl">{getReactionIcon(post.userReaction)}</span>
-  ) : (
-    <BiSolidLike size={20} />
-  )}
-  {post.userId === currentUserId ? post.likes : "Like"}
-  {showReactionOptions[post.id] && (
-    <div className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10">
-      <span
-        onClick={() => handleReaction(post.id, "like")}
-        className="cursor-pointer text-xl"
-      >
-        👍
-      </span>
-      <span
-        onClick={() => handleReaction(post.id, "love")}
-        className="cursor-pointer text-xl"
-      >
-        ❤️
-      </span>
-      <span
-        onClick={() => handleReaction(post.id, "haha")}
-        className="cursor-pointer text-xl"
-      >
-        😂
-      </span>
-      <span
-        onClick={() => handleReaction(post.id, "wow")}
-        className="cursor-pointer text-xl"
-      >
-        😮
-      </span>
-      <span
-        onClick={() => handleReaction(post.id, "sad")}
-        className="cursor-pointer text-xl"
-      >
-        😢
-      </span>
-    </div>
-  )}
-</span>
-                    <span className="flex items-center gap-2">
-                      <FaRegCommentDots size={20} />
-                      {post.userId === currentUserId
-                        ? post.comments
-                        : "Comment"}
-                    </span>
-                    <span className="flex mr-10 items-center gap-2">
-                      <FaShare size={20} />
-                      {post.userId === currentUserId ? post.shares : "Share"}
-                    </span>
+                    {/* Only show counts if current user is the post owner */}
+                    {post.userId === currentUserId ? (
+                      <>
+                        <span
+                          className="flex ml-10 items-center gap-2 cursor-pointer relative"
+                          onMouseEnter={() =>
+                            setShowReactionOptions((prev) => ({
+                              ...prev,
+                              [post.id]: true,
+                            }))
+                          }
+                          onMouseLeave={() =>
+                            setShowReactionOptions((prev) => ({
+                              ...prev,
+                              [post.id]: false,
+                            }))
+                          }
+                        >
+                          {post.userReaction ? (
+                            <span className="text-xl">
+                              {getReactionIcon(post.userReaction)}
+                            </span>
+                          ) : (
+                            <BiSolidLike size={20} />
+                          )}
+                          {post.likes}
+                          {showReactionOptions[post.id] && (
+                            <div className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10">
+                              <span
+                                onClick={() => handleReaction(post.id, "like")}
+                                className="cursor-pointer text-xl"
+                              >
+                                👍
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "love")}
+                                className="cursor-pointer text-xl"
+                              >
+                                ❤️
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "haha")}
+                                className="cursor-pointer text-xl"
+                              >
+                                😂
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "wow")}
+                                className="cursor-pointer text-xl"
+                              >
+                                😮
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "sad")}
+                                className="cursor-pointer text-xl"
+                              >
+                                😢
+                              </span>
+                            </div>
+                          )}
+                        </span>
+
+                        <span
+                          className="flex items-center gap-2 cursor-pointer"
+                          onClick={() => toggleComments(post.id)}
+                        >
+                          <FaRegCommentDots size={20} />
+                          {post.comments}
+                        </span>
+
+                        <span className="flex mr-10 items-center gap-2">
+                          <FaShare size={20} />
+                          {post.shares}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {/* Show only icons without counts for non-owners */}
+                        <span
+                          className="flex ml-10 items-center gap-2 cursor-pointer relative"
+                          onMouseEnter={() =>
+                            setShowReactionOptions((prev) => ({
+                              ...prev,
+                              [post.id]: true,
+                            }))
+                          }
+                          onMouseLeave={() =>
+                            setShowReactionOptions((prev) => ({
+                              ...prev,
+                              [post.id]: false,
+                            }))
+                          }
+                        >
+                          {post.userReaction ? (
+                            <span className="text-xl">
+                              {getReactionIcon(post.userReaction)}
+                            </span>
+                          ) : (
+                            <BiSolidLike size={20} />
+                          )}
+                          {showReactionOptions[post.id] && (
+                            <div className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10">
+                              <span
+                                onClick={() => handleReaction(post.id, "like")}
+                                className="cursor-pointer text-xl"
+                              >
+                                👍
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "love")}
+                                className="cursor-pointer text-xl"
+                              >
+                                ❤️
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "haha")}
+                                className="cursor-pointer text-xl"
+                              >
+                                😂
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "wow")}
+                                className="cursor-pointer text-xl"
+                              >
+                                😮
+                              </span>
+                              <span
+                                onClick={() => handleReaction(post.id, "sad")}
+                                className="cursor-pointer text-xl"
+                              >
+                                😢
+                              </span>
+                            </div>
+                          )}
+                        </span>
+
+                        <span
+                          className="flex items-center gap-2 cursor-pointer"
+                          onClick={() => toggleComments(post.id)}
+                        >
+                          <FaRegCommentDots size={20} />
+                        </span>
+
+                        <span className="flex mr-10 items-center gap-2">
+                          <FaShare size={20} />
+                        </span>
+                      </>
+                    )}
                   </div>
+
+                  {/* Comments Section */}
+                  {expandedComments[post.id] && (
+                    <div className="mt-4 border-t pt-4">
+                      {/* Comment input */}
+                      <div className="flex items-center gap-3 mb-4">
+                        <img
+                          src={profilePicture || getAvatarByGender(gender)}
+                          alt="Profile"
+                          className="w-8 h-8 rounded-full object-cover"
+                          onError={(e) =>
+                            (e.currentTarget.src = getAvatarByGender(gender))
+                          }
+                        />
+                        <div className="flex-1 relative">
+                          <input
+                          style={{background: "#fff"}}
+                            type="text"
+                            placeholder="Add your thoughts..."
+                            value={commentStates[post.id]?.content || ""}
+                            onChange={(e) =>
+                              handleCommentChange(post.id, e.target.value)
+                            }
+                            className="w-full border border-gray-300 text-black rounded-full px-4 py-2 pr-16 focus:outline-none focus:border-[#611DD0]"
+                            onKeyPress={(e) => {
+                              if (
+                                e.key === "Enter" &&
+                                commentStates[post.id]?.content.trim()
+                              ) {
+                                handleSubmitComment(post.id);
+                              }
+                            }}
+                          />
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+                            <button
+                              onClick={() => toggleCommentEmojiPicker(post.id)}
+                              className="text-gray-500 hover:text-[#611DD0] transition-colors"
+                            >
+                              <FaSmile size={18} />
+                            </button>
+                            <button
+                              onClick={() => handleSubmitComment(post.id)}
+                              disabled={
+                                !commentStates[post.id]?.content.trim() ||
+                                commentStates[post.id]?.isSubmitting
+                              }
+                              className="text-[#611DD0] disabled:text-gray-400 transition-colors"
+                            >
+                              {commentStates[post.id]?.isSubmitting ? (
+                                <div className="w-4 h-4 border-2 border-[#611DD0] border-t-transparent rounded-full animate-spin"></div>
+                              ) : (
+                                <FaPaperPlane size={16} />
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Comment emoji picker */}
+                          {commentStates[post.id]?.showCommentEmojiPicker && (
+                            <div
+                              ref={commentEmojiPickerRef}
+                              className="absolute bottom-12 right-0 z-10"
+                            >
+                              <Picker
+                                data={data}
+                                onEmojiSelect={(emoji: Emoji) =>
+                                  handleCommentEmojiSelect(emoji, post.id)
+                                }
+                                theme="light"
+                                previewPosition="none"
+                                skinTonePosition="none"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Comments list */}
+                      <div className="space-y-3 max-h-60 overflow-y-auto">
+                        {commentStates[post.id]?.comments?.map((comment) => (
+                          <div
+                            key={comment._id}
+                            className="flex items-start gap-3"
+                          >
+                            <img
+                              src={
+                                comment.user.profilePicture || DefaultAvatar
+                              }
+                              alt={comment.user.username}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) =>
+                                (e.currentTarget.src = DefaultAvatar)
+                              }
+                            />
+                            <div className="flex-1 bg-gray-100 rounded-lg p-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="font-semibold text-sm">
+                                  {comment.user.username}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {new Date(
+                                    comment.createdAt
+                                  ).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-800">
+                                {comment.content}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+
+                        {(!commentStates[post.id]?.comments ||
+                          commentStates[post.id]?.comments.length === 0) && (
+                          <p className="text-center text-gray-500 text-sm py-4">
+                            No comments yet. Be the first to comment!
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

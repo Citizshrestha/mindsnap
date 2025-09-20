@@ -23,7 +23,6 @@ interface CloudinaryUploadResponse {
   error?: { message: string };
 }
 
-
 interface UpdateProfileResponse {
   data: {
     success: boolean;
@@ -56,7 +55,11 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
-  const { username: currentUsername, profilePicture, _id: userId } = useSelector((state: RootState) => state.user);
+  const {
+    username: currentUsername,
+    profilePicture,
+    _id: userId,
+  } = useSelector((state: RootState) => state.user);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -70,10 +73,10 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
   const [showNotification, setShowNotification] = useState(false);
   const [hasImageError, setHasImageError] = useState(false);
   const [localUnreadCount, setLocalUnreadCount] = useState(initialUnreadCount);
-  
+
   const isValidObjectId = (id: string): boolean => {
-  return /^[0-9a-fA-F]{24}$/.test(id);
-};
+    return /^[0-9a-fA-F]{24}$/.test(id);
+  };
 
   // Fetch user data on mount
   useEffect(() => {
@@ -89,18 +92,24 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
           return;
         }
 
-        const response: UserProfileResponse = await axiosClient.get("/api/users/profile");
+        const response: UserProfileResponse = await axiosClient.get(
+          "/api/users/profile"
+        );
         if (isMounted) {
           dispatch(setUsername(response.data.username));
           if (response.data.profilePicture) {
             dispatch(setProfilePicture(response.data.profilePicture));
-            localStorage.setItem("profilePicture", response.data.profilePicture);
+            localStorage.setItem(
+              "profilePicture",
+              response.data.profilePicture
+            );
           }
           setLoggedInUsername(response.data.username);
           localStorage.setItem("username", response.data.username);
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to fetch user data";
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch user data";
         if (isMounted) {
           setError(message);
           toast.error(`Error: ${message}`);
@@ -120,89 +129,113 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
   }, [dispatch]);
 
   useEffect(() => {
- const fetchAndCombineNotifications = async () => {
-  try {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return;
+    const fetchAndCombineNotifications = async () => {
+      try {
+        const token = localStorage.getItem("accessToken");
+        if (!token) return;
 
-    const response = await axiosClient.get("/api/notifications", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+        const response = await axiosClient.get("/api/notifications", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
 
-    if (response.data.success) {
-      // Combine sample notifications and DB notifications
-      const dbNotifications = response.data.notifications || [];
-      const combinedNotifications = [...sampleNotifications, ...dbNotifications].filter(
-        (notif) => notif.sender && notif.sender._id && notif.sender.username && notif.sender.profilePicture
-      );
+        if (response.data.success) {
+          // Combine sample notifications and DB notifications
+          const dbNotifications = response.data.notifications || [];
+          const combinedNotifications = [
+            ...sampleNotifications,
+            ...dbNotifications,
+          ].filter(
+            (notif) =>
+              notif.sender &&
+              notif.sender._id &&
+              notif.sender.username &&
+              notif.sender.profilePicture
+          );
 
-      // Check follow status ONLY for valid MongoDB ObjectIds
-      const updatedNotifications = await Promise.all(
-        combinedNotifications.map(async (notif) => {
-          if (notif.type === "follow" && notif.sender._id && isValidObjectId(notif.sender._id)) {
-            try {
-              const followRes = await axiosClient.get(`/api/users/${notif.sender._id}/follow-status`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
-              return { ...notif, isFollowing: followRes.data.isFollowing || false };
-            } catch (followError) {
-              console.warn(`Failed to check follow status for user ${notif.sender._id}:`, followError);
-              return { ...notif, isFollowing: false };
-            }
-          }
-          // For sample notifications with invalid IDs, just return as-is
-          return notif;
-        })
-      );
+          // Check follow status ONLY for valid MongoDB ObjectIds
+          const updatedNotifications = await Promise.all(
+            combinedNotifications.map(async (notif) => {
+              if (
+                notif.type === "follow" &&
+                notif.sender._id &&
+                isValidObjectId(notif.sender._id)
+              ) {
+                try {
+                  const followRes = await axiosClient.get(
+                    `/api/users/${notif.sender._id}/follow-status`,
+                    {
+                      headers: { Authorization: `Bearer ${token}` },
+                    }
+                  );
+                  return {
+                    ...notif,
+                    isFollowing: followRes.data.isFollowing || false,
+                  };
+                } catch (followError) {
+                  console.warn(
+                    `Failed to check follow status for user ${notif.sender._id}:`,
+                    followError
+                  );
+                  return { ...notif, isFollowing: false };
+                }
+              }
+              // For sample notifications with invalid IDs, just return as-is
+              return notif;
+            })
+          );
 
-      // Sort by date (newest first)
-      updatedNotifications.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+          // Sort by date (newest first)
+          updatedNotifications.sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          );
 
-      // Set unread count
-      const unreadCount = updatedNotifications.filter((n) => !n.read).length;
-      dispatch(setUnreadCount(unreadCount));
-      setLocalUnreadCount(unreadCount);
-      localStorage.setItem("unreadCount", unreadCount.toString());
-    } else {
-      throw new Error("Failed to fetch notifications");
-    }
-  } catch (err) {
-    console.error("Error fetching notifications:", err);
-    // fallback: count unread in sampleNotifications only
-    const unreadCount = sampleNotifications.filter((n) => !n.read).length;
-    dispatch(setUnreadCount(unreadCount));
-    setLocalUnreadCount(unreadCount);
-    localStorage.setItem("unreadCount", unreadCount.toString());
-  }
-};
+          // Set unread count
+          const unreadCount = updatedNotifications.filter(
+            (n) => !n.read
+          ).length;
+          dispatch(setUnreadCount(unreadCount));
+          setLocalUnreadCount(unreadCount);
+          localStorage.setItem("unreadCount", unreadCount.toString());
+        } else {
+          throw new Error("Failed to fetch notifications");
+        }
+      } catch (err) {
+        console.error("Error fetching notifications:", err);
+        // fallback: count unread in sampleNotifications only
+        const unreadCount = sampleNotifications.filter((n) => !n.read).length;
+        dispatch(setUnreadCount(unreadCount));
+        setLocalUnreadCount(unreadCount);
+        localStorage.setItem("unreadCount", unreadCount.toString());
+      }
+    };
 
-  fetchAndCombineNotifications();
-}, [dispatch]);
+    fetchAndCombineNotifications();
+  }, [dispatch]);
 
-
-
-const handleNewNotification = useCallback(
-  (notification: SocketNotification) => {
-    if (!notification.read) {
-      setLocalUnreadCount((prev) => {
-        const newCount = prev + 1;
-        dispatch(setUnreadCount(newCount));
-        localStorage.setItem("unreadCount", newCount.toString());
-        return newCount;
-      });
-    }
-  },
-  [dispatch]
-);
+  const handleNewNotification = useCallback(
+    (notification: SocketNotification) => {
+      if (!notification.read) {
+        setLocalUnreadCount((prev) => {
+          const newCount = prev + 1;
+          dispatch(setUnreadCount(newCount));
+          localStorage.setItem("unreadCount", newCount.toString());
+          return newCount;
+        });
+      }
+    },
+    [dispatch]
+  );
 
   useEffect(() => {
     if (!userId || !localStorage.getItem("accessToken")) return;
 
     const connectSocket = async () => {
       try {
-        await socketService.connect(localStorage.getItem("accessToken")!, userId);
+        await socketService.connect(
+          localStorage.getItem("accessToken")!,
+          userId
+        );
         socketService.joinUserRoom(userId);
         socketService.onNotification(handleNewNotification);
       } catch (err) {
@@ -226,7 +259,9 @@ const handleNewNotification = useCallback(
     setLocalUnreadCount(initialUnreadCount);
   }, [initialUnreadCount]);
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -246,17 +281,36 @@ const handleNewNotification = useCallback(
       setLoading(true);
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "");
+      formData.append(
+        "upload_preset",
+        import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || ""
+      );
       formData.append("folder", "mindsnap/profile_pictures");
 
-      const res = await fetch(`https://api.cloudflare.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`, {
+      // FIXED: Use correct Cloudinary URL
+      const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${
+        import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+      }/image/upload`;
+
+      const res = await fetch(cloudinaryUrl, {
         method: "POST",
         body: formData,
       });
-      const data: CloudinaryUploadResponse = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || "Cloudinary upload failed");
 
-      const updateResp: UpdateProfileResponse = await axiosClient.patch("/api/users/update-profile", { profilePicture: data.secure_url });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error?.message || "Cloudinary upload failed");
+      }
+
+      const data: CloudinaryUploadResponse = await res.json();
+
+      const updateResp: UpdateProfileResponse = await axiosClient.patch(
+        "/api/users/update-profile",
+        {
+          profilePicture: data.secure_url,
+        }
+      );
+
       if (updateResp.data.success) {
         dispatch(setProfilePicture(data.secure_url));
         localStorage.setItem("profilePicture", data.secure_url);
@@ -265,15 +319,18 @@ const handleNewNotification = useCallback(
         throw new Error(updateResp.data.message || "Update failed");
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Error uploading image";
+      const message =
+        err instanceof Error ? err.message : "Error uploading image";
       setError(message);
       toast.error(`Error: ${message}`);
+      console.error("Upload error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const transformedUrl: string = profilePicture || localStorage.getItem("profilePicture") || defaultAvatar;
+  const transformedUrl: string =
+    profilePicture || localStorage.getItem("profilePicture") || defaultAvatar;
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
@@ -287,9 +344,12 @@ const handleNewNotification = useCallback(
       const token = localStorage.getItem("accessToken");
       if (!token) throw new Error("No token available");
 
-      const res = await axiosClient.get(`/api/users/search?query=${encodeURIComponent(query)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await axiosClient.get(
+        `/api/users/search?query=${encodeURIComponent(query)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
       setSearchResults(res.data);
     } catch (err) {
       console.error("Search error:", err);
@@ -320,7 +380,10 @@ const handleNewNotification = useCallback(
   if (error) {
     return (
       <div className="fixed bg-[#611DD0] top-0 left-0 w-full h-20 flex items-center justify-center text-white z-50">
-        {error} <button onClick={() => setError(null)} className="ml-2 text-red-300">Dismiss</button>
+        {error}{" "}
+        <button onClick={() => setError(null)} className="ml-2 text-red-300">
+          Dismiss
+        </button>
       </div>
     );
   }
@@ -328,32 +391,173 @@ const handleNewNotification = useCallback(
   return (
     <div className="fixed font-poppins bg-[#611DD0] top-0 left-0 w-full h-20 flex items-center justify-between px-5 z-50">
       <div className="flex items-center justify-start h-full">
-        <img src={logoImg} alt="SnapMind Logo" className="w-20 h-20 pb-2 pl-5 object-cover rounded-full" />
+        <img
+          src={logoImg}
+          alt="SnapMind Logo"
+          className="w-20 h-20 pb-2 pl-5 object-cover rounded-full"
+        />
         <h1 className="text-white text-3xl font-bold flex items-center">
           Mind<span className="text-yellow-300">Snap</span>
         </h1>
       </div>
 
       <div className="Nav_Link flex items-center justify-between absolute left-80">
-        <Link onClick={() => navigate("/home")} className="link text-white flex mt-4 mx-2 items-center" to="/home" style={{ "--underline-color": "#FFF0F5", "--hover-color": "#FFF0F5" } as React.CSSProperties}>
-          <FiHome size={20} className="home-icon" style={{ color: activeLink === "/home" ? "#FFF0F5" : "#00FFFF" }} />
-          <h5 className="font-semibold text-[1.1rem] ml-2" style={{ color: activeLink === "/home" ? "#FFF0F5" : "#fff" }}>Home</h5>
-          {activeLink === "/home" && <span className="underline" style={{ width: "100%", height: "3px", backgroundColor: "#FFF0F5", display: "block", position: "absolute", bottom: 0, left: 0, borderRadius: "2px" }} />}
+        <Link
+          onClick={() => navigate("/home")}
+          className="link text-white flex mt-4 mx-2 items-center"
+          to="/home"
+          style={
+            {
+              "--underline-color": "#FFF0F5",
+              "--hover-color": "#FFF0F5",
+            } as React.CSSProperties
+          }
+        >
+          <FiHome
+            size={20}
+            className="home-icon"
+            style={{ color: activeLink === "/home" ? "#FFF0F5" : "#00FFFF" }}
+          />
+          <h5
+            className="font-semibold text-[1.1rem] ml-2"
+            style={{ color: activeLink === "/home" ? "#FFF0F5" : "#fff" }}
+          >
+            Home
+          </h5>
+          {activeLink === "/home" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#FFF0F5",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </Link>
-        <Link onClick={() => navigate("/profile")} to="/profile" className="link text-white flex mt-4 mx-2 items-center" style={{ "--underline-color": "#F9A8D4", "--hover-color": "#F9A8D4" } as React.CSSProperties}>
-          <MdPerson3 size={22} className="profile-icon" style={{ color: activeLink === "/profile" ? "#FF00FF" : "#FF00FF" }} />
-          <h5 className="font-semibold text-white text-[1.1rem] ml-2" style={{ color: activeLink === "/profile" ? "#F9A8D4" : "#fff" }}>Profile</h5>
-          {activeLink === "/profile" && <span className="underline" style={{ width: "100%", height: "3px", backgroundColor: "#F9A8D4", display: "block", position: "absolute", bottom: 0, left: 0, borderRadius: "2px" }} />}
+        <Link
+          onClick={() => navigate("/profile")}
+          to="/profile"
+          className="link text-white flex mt-4 mx-2 items-center"
+          style={
+            {
+              "--underline-color": "#F9A8D4",
+              "--hover-color": "#F9A8D4",
+            } as React.CSSProperties
+          }
+        >
+          <MdPerson3
+            size={22}
+            className="profile-icon"
+            style={{ color: activeLink === "/profile" ? "#FF00FF" : "#FF00FF" }}
+          />
+          <h5
+            className="font-semibold text-white text-[1.1rem] ml-2"
+            style={{ color: activeLink === "/profile" ? "#F9A8D4" : "#fff" }}
+          >
+            Profile
+          </h5>
+          {activeLink === "/profile" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#F9A8D4",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </Link>
-        <Link onClick={() => navigate("/explore")} to="/explore" className="link rocketLink text-white flex mt-4 mx-2 items-center" style={{ "--underline-color": "#FF6347", "--hover-color": "#FF6347" } as React.CSSProperties}>
-          <span className="text-xl rocketIcon" style={{ color: activeLink === "/explore" ? "#FF6347" : "#fff" }}>🚀</span>
-          <h5 className="font-semibold text-[1.1rem] ml-2" style={{ color: activeLink === "/explore" ? "#FF6347" : "#fff" }}>Explore</h5>
-          {activeLink === "/explore" && <span className="underline" style={{ width: "100%", height: "3px", backgroundColor: "#FF6347", display: "block", position: "absolute", bottom: 0, left: 0, borderRadius: "2px" }} />}
+        <Link
+          onClick={() => navigate("/explore")}
+          to="/explore"
+          className="link rocketLink text-white flex mt-4 mx-2 items-center"
+          style={
+            {
+              "--underline-color": "#FF6347",
+              "--hover-color": "#FF6347",
+            } as React.CSSProperties
+          }
+        >
+          <span
+            className="text-xl rocketIcon"
+            style={{ color: activeLink === "/explore" ? "#FF6347" : "#fff" }}
+          >
+            🚀
+          </span>
+          <h5
+            className="font-semibold text-[1.1rem] ml-2"
+            style={{ color: activeLink === "/explore" ? "#FF6347" : "#fff" }}
+          >
+            Explore
+          </h5>
+          {activeLink === "/explore" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#FF6347",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </Link>
-        <Link onClick={() => navigate("/connections")} to="/connections" className="link text-white flex mt-4 mx-2 items-center" style={{ "--underline-color": "#0ACEDC", "--hover-color": "#0ACEDC" } as React.CSSProperties}>
-          <MdPersonAdd size={22} className="connection-icon" style={{ color: activeLink === "/connections" ? "#0ACEDC" : "#0ACEDC" }} />
-          <h5 className="font-semibold text-[1.1rem] ml-2" style={{ color: activeLink === "/connections" ? "#0ACEDC" : "#fff" }}>Connection</h5>
-          {activeLink === "/connections" && <span className="underline" style={{ width: "100%", height: "3px", backgroundColor: "#0ACEDC", display: "block", position: "absolute", bottom: 0, left: 0, borderRadius: "2px" }} />}
+        <Link
+          onClick={() => navigate("/connections")}
+          to="/connections"
+          className="link text-white flex mt-4 mx-2 items-center"
+          style={
+            {
+              "--underline-color": "#0ACEDC",
+              "--hover-color": "#0ACEDC",
+            } as React.CSSProperties
+          }
+        >
+          <MdPersonAdd
+            size={22}
+            className="connection-icon"
+            style={{
+              color: activeLink === "/connections" ? "#0ACEDC" : "#0ACEDC",
+            }}
+          />
+          <h5
+            className="font-semibold text-[1.1rem] ml-2"
+            style={{
+              color: activeLink === "/connections" ? "#0ACEDC" : "#fff",
+            }}
+          >
+            Connection
+          </h5>
+          {activeLink === "/connections" && (
+            <span
+              className="underline"
+              style={{
+                width: "100%",
+                height: "3px",
+                backgroundColor: "#0ACEDC",
+                display: "block",
+                position: "absolute",
+                bottom: 0,
+                left: 0,
+                borderRadius: "2px",
+              }}
+            />
+          )}
         </Link>
       </div>
 
@@ -389,8 +593,14 @@ const handleNewNotification = useCallback(
                       className="h-8 w-8 rounded-full object-cover mr-2"
                     />
                     <div>
-                      <p className="text-sm text-gray-800 font-stretch-normal">{user.fullname}</p>
-                      {user.fullname && <p className="text-xs text-gray-600">@{user.username}</p>}
+                      <p className="text-sm text-gray-800 font-stretch-normal">
+                        {user.fullname}
+                      </p>
+                      {user.fullname && (
+                        <p className="text-xs text-gray-600">
+                          @{user.username}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -402,8 +612,19 @@ const handleNewNotification = useCallback(
 
       <div className="text-white flex items-center space-x-4">
         <div className="setting flex justify-between items-center flex-col h-9 w-9">
-          <img src={settingImg} className="rounded-full" alt="Setting" onClick={() => navigate("/settings")} />
-          <h3>Settings</h3>
+          <img
+            src={settingImg}
+            className="rounded-full"
+            alt="Setting"
+            onClick={() => navigate("/settings")}
+          />
+          <h3
+            onClick={() => {
+              navigate("/settings");
+            }}
+          >
+            Settings
+          </h3>
         </div>
         <div className="relative">
           <FiBell
@@ -416,15 +637,20 @@ const handleNewNotification = useCallback(
               {localUnreadCount}
             </span>
           )}
-          {showNotification && <Notification onClose={() => setShowNotification(false)} onUnreadCountChange={(count) => {
-            setLocalUnreadCount(count);
-            dispatch(setUnreadCount(count));
-            localStorage.setItem("unreadCount", count.toString());
-          }} />}
+          {showNotification && (
+            <Notification
+              onClose={() => setShowNotification(false)}
+              onUnreadCountChange={(count) => {
+                setLocalUnreadCount(count);
+                dispatch(setUnreadCount(count));
+                localStorage.setItem("unreadCount", count.toString());
+              }}
+            />
+          )}
         </div>
         <div className="profileContainer flex flex-col items-center">
           <div className="relative">
-            {(loading || initialLoading || hasImageError) ? (
+            {loading || initialLoading || hasImageError ? (
               <Loader />
             ) : (
               <img
@@ -432,9 +658,14 @@ const handleNewNotification = useCallback(
                 src={transformedUrl}
                 alt="profileIMG"
                 onError={(e) => {
-                  console.error("Image load failed, falling back to default:", e);
+                  console.error(
+                    "Image load failed, falling back to default:",
+                    transformedUrl
+                  );
                   setHasImageError(true);
                   e.currentTarget.src = defaultAvatar;
+                  dispatch(setProfilePicture(defaultAvatar));
+                  localStorage.setItem("profilePicture", defaultAvatar);
                 }}
               />
             )}

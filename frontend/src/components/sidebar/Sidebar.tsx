@@ -271,11 +271,11 @@ const Sidebar = () => {
         </a>
 
         <a
-          href="/friend_request"
+          href="/follow_request"
           style={linkStyle("/PendingRequest")}
           onClick={(e) => {
             e.preventDefault();
-            handleNavigate("/friend_request");
+            handleNavigate("/follow_request");
           }}
           onMouseEnter={(e) => showTooltip(e, "Follow Request")}
           onMouseLeave={hideTooltip}

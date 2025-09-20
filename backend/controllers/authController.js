@@ -195,33 +195,11 @@ export const googleLogin = asyncHandler(async (req, res) => {
     let user = await User.findOne({ email: payload.email });
 
     if (!user) {
-      // Register new user if not exists
-      const username = payload.email?.split('@')[0] || `user_${Date.now()}`;
-      user = await User.create({
-        fullname: payload.name || "Google User",
-        username,
-        email: payload.email,
-        password: crypto.randomBytes(16).toString("hex"),
+      // User doesn't exist - don't auto-register, return error
+      return res.status(404).json({
+        success: false,
+        message: "No account found with this Google email. Please register first.",
       });
-      const mailOptions = {
-        from: process.env.SENDER_EMAIL,
-        to: payload.email,
-        subject: `🎉 Welcome to MindSnap, ${username}! 🚀`,
-        text: `
-Hello ${username} 🌟,
-
-Welcome to MindSnap! We're excited to have you here. 🎈
-Your account has been successfully created with the email: ${payload.email}.
-
-Start exploring now: ${process.env.CLIENT_URL}/login
-
-If you need any assistance, reach out to us at ${process.env.SUPPORT_EMAIL}. 💌
-
-Cheers,
-The MindSnap Team 🌱
-        `,
-      };
-      await sendEmail(mailOptions);
     }
 
     const accessToken = generateAccessToken(user._id);
@@ -236,7 +214,7 @@ The MindSnap Team 🌱
 
     return res.status(200).json({
       success: true,
-      message: user.isNew ? "User registered and logged in successfully" : "Login successful",
+      message: "Login successful",
       accessToken,
       _id: user._id,
       username: user.username,

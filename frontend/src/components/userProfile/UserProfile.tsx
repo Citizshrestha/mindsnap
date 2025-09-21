@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import "./userProfile.css";
 import axiosClient from "../../api/axiosClient";
 import { useSelector, useDispatch } from "react-redux";
-import {  setProfilePicture } from "../../redux/slices/userSlice";
+import { setProfilePicture } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
 import { useNavigate, useParams } from "react-router-dom";
 import defaultAvatar from "../../../public/images/coverImage.png";
@@ -11,6 +11,8 @@ import { toast } from "react-toastify";
 import { IoCloseSharp } from "react-icons/io5";
 import Loader from "../Loader";
 import { setActiveChat, setConversationMap } from "../../redux/slices/messageSlice";
+import { BiSolidLike } from "react-icons/bi";
+import { FaRegCommentDots, FaShare } from "react-icons/fa";
 
 interface UserProfileData {
   success: boolean;
@@ -33,6 +35,36 @@ interface UserConnection {
   profilePicture: string;
 }
 
+interface Like{
+  _id: string;
+  user: string;
+  createdAt: string;
+}
+interface Comment{
+    _id: string;
+  user: {
+    _id: string;
+    username: string;
+    profilePicture: string;
+  },
+  createdAt: string;
+}
+interface Post {
+  _id: string;
+  user: {
+    _id: string;
+    username: string;
+    profilePicture: string;
+    fullname: string;
+  };
+  content: string;
+  image?: string;
+  likes: Like[];
+  comments: Comment[];
+  shares: number;
+  createdAt: string;
+}
+
 const UserProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { profilePicture: currentProfilePicture, username: currentUsername } = useSelector(
@@ -44,7 +76,7 @@ const UserProfile: React.FC = () => {
   const loggedInUserId = localStorage.getItem("userId");
 
   const [fullname, setFullname] = useState("");
-  const [username, setUsername] = useState(""); // Added to store target user's username
+  const [username, setUsername] = useState(""); 
   const [error, setError] = useState("");
   const [aboutMe, setAboutMe] = useState("");
   const [vibe, setVibe] = useState("");
@@ -55,11 +87,21 @@ const UserProfile: React.FC = () => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followersList, setFollowersList] = useState<UserConnection[]>([]);
   const [followingList, setFollowingList] = useState<UserConnection[]>([]);
-  const [showModal, setShowModal] = useState<"followers" | "following" | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [showModal, setShowModal] = useState<"followers" | "following" | "post" | null>(null);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState<string | null>(null);
   const [showUnfollowConfirm, setShowUnfollowConfirm] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [userPosts, setUserPosts] = useState<Post[]>([]);
+
+  const formatTime = (date: string | Date) => {
+    return new Date(date).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const fetchUserProfile = useCallback(async () => {
     setIsLoading(true);
@@ -76,8 +118,8 @@ const UserProfile: React.FC = () => {
       });
       const data = response.data;
       setFullname(data.fullname || "");
-      setUsername(data.username || ""); // Set target user's username
-      if (data.profilePicture) dispatch(setProfilePicture(data.profilePicture)); // Update profile picture for all profiles
+      setUsername(data.username || "");
+      if (data.profilePicture) dispatch(setProfilePicture(data.profilePicture));
       setAboutMe(data.aboutMe || "");
       setVibe(data.vibe || "");
       setVibeDescription(data.vibeDescription || "");
@@ -91,6 +133,67 @@ const UserProfile: React.FC = () => {
       setIsLoading(false);
     }
   }, [userId, dispatch]);
+
+  const fetchPosts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) throw new Error("No token available");
+
+      const response = await axiosClient.get("/api/posts/getPosts", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      const fetchedPosts = response.data;
+      
+      if (userId) {
+        const filteredPosts = fetchedPosts.filter((post: any) => 
+          post.user?._id === userId
+        );
+        setPosts(filteredPosts);
+      } else {
+        setPosts(fetchedPosts);
+      }
+    } catch (err) {
+      console.error("Fetch Posts error:", err);
+      toast.error("Failed to load posts");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  const fetchUserCreatedPosts = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) throw new Error("No token available");
+
+      const response = await axiosClient.get("/api/posts/getPosts", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      const allPosts = response.data;
+      
+      if (userId) {
+        const filteredPosts = allPosts.filter((post: any) => 
+          post.user?._id === userId
+        );
+        setUserPosts(filteredPosts);
+      } else {
+        const currentUserId = localStorage.getItem("userId");
+        const myPosts = allPosts.filter((post: any) => 
+          post.user?._id === currentUserId
+        );
+        setUserPosts(myPosts);
+      }
+    } catch (err) {
+      console.error("Fetch User Posts error:", err);
+      toast.error("Failed to load user posts");
+      setUserPosts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
 
   const fetchConnections = async (type: "followers" | "following") => {
     setIsLoading(true);
@@ -199,46 +302,65 @@ const UserProfile: React.FC = () => {
     setShowModal(null);
     setShowUnfollowConfirm(null);
     setShowRemoveConfirm(null);
+    setSelectedPost(null);
   };
 
-  const handleMessage = async () => {
-    if (!userId) return;
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem("accessToken");
-      if (!token) {
-        toast.error("No authentication token available");
-        return;
-      }
-
-      const response = await axiosClient.post(
-        "/api/conversations",
-        { participantIds: [userId], isGroup: false },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      if (response.data.success) {
-        const { conversation } = response.data;
-        dispatch(setConversationMap({
-          ...conversations,
-          [fullname]: conversation._id
-        }));
-        dispatch(setActiveChat(fullname));
-        navigate(`/messages?conversationId=${conversation._id}`);
-      } else {
-        toast.error("Failed to start conversation");
-      }
-    } catch (err) {
-      console.error("Error starting conversation:", err);
-      toast.error("Failed to start conversation");
-    } finally {
-      setIsLoading(false);
+const handleMessage = async () => {
+  if (!userId) return;
+  setIsLoading(true);
+  try {
+    const token = localStorage.getItem("accessToken");
+    if (!token) {
+      toast.error("No authentication token available");
+      return;
     }
+
+    // FIX: Changed participantIds to participantId (singular)
+    const response = await axiosClient.post(
+      "/api/conversations",
+      { participantId: userId, isGroup: false }, // Changed here
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    if (response.data.success) {
+      const { data: conversation } = response.data; // Also fixed this destructuring
+      dispatch(setConversationMap({
+        ...conversations,
+        [fullname]: conversation._id
+      }));
+      dispatch(setActiveChat(fullname));
+      navigate(`/messages?conversationId=${conversation._id}`);
+    } else {
+      toast.error("Failed to start conversation");
+    }
+  } catch (err) {
+    console.error("Error starting conversation:", err);
+    
+    // Better error handling
+    if (err.response?.data?.message) {
+      toast.error(err.response.data.message);
+    } else {
+      toast.error("Failed to start conversation");
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  const handleViewPost = (post: Post) => {
+    setSelectedPost(post);
+    setShowModal("post");
+  };
+
+  const handleViewUserPosts = () => {
+    fetchUserCreatedPosts();
+    setShowModal("post");
   };
 
   useEffect(() => {
     fetchUserProfile();
-  }, [fetchUserProfile]);
+    fetchPosts();
+  }, [fetchUserProfile, fetchPosts]);
 
   if (error) {
     return <div>{error}</div>;
@@ -274,7 +396,7 @@ const UserProfile: React.FC = () => {
                   {fullname}
                 </h2>
                 <h3 className="text-lg text-gray-700 font-medium mb-2">
-                  @{username} {/* Use target user's username */}
+                  @{username}
                 </h3>
                 {!userId && (
                   <button
@@ -318,7 +440,7 @@ const UserProfile: React.FC = () => {
                   <h2 className="text-2xl font-bold text-[#611DD0]">{followersCount}</h2>
                   <p className="text-gray-600 font-medium">Followers</p>
                 </div>
-                <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
+                                <div className="w-px bg-gradient-to-b from-[#A084E8] to-[#611DD0] mx-4"></div>
                 <div
                   className="flex flex-col items-center cursor-pointer"
                   onClick={() => handleShowConnections("following")}
@@ -339,7 +461,7 @@ const UserProfile: React.FC = () => {
           <div className="flex gap-4 overflow-x-auto scrollbar-hide">
             <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
               <img
-                src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMHx8fGVufDB8fHx8fA%3D%3D"
+                src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVeZHwyMHx8fGVufDB8fHx8fA%3D%3D"
                 alt="Travel Scene"
                 className="w-full h-full object-cover"
               />
@@ -357,7 +479,7 @@ const UserProfile: React.FC = () => {
                 Food
               </div>
             </div>
-            <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
+                        <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
               <img
                 src="https://images.unsplash.com/photo-1595675024853-0f3ec9098ac7?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTV8fGNvZGluZ3xlbnwwfHwwfHx8MA%3D%3D"
                 alt="Code"
@@ -369,7 +491,7 @@ const UserProfile: React.FC = () => {
             </div>
             <div className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10">
               <img
-                src="https://images.pexels.com/photos/27355586/pexels-photo-27355586/free-photo-of-daniel-1.jpeg?auto=compress&cs=tinysrgb&w=600"
+                src="https://images.pexels.com/photos-27355586/pexels-photo-27355586/free-photo-of-daniel-1.jpeg?auto=compress&cs=tinysrgb&w=600"
                 alt="Myself"
                 className="w-full h-full object-cover"
               />
@@ -414,37 +536,37 @@ const UserProfile: React.FC = () => {
         <div className="mb-6">
           <div className="flex justify-between mb-2">
             <h3 className="text-xl text-black font-bold">{postsCount} Vibes ✨</h3>
-            <h3 className="text-xl font-semibold">Highlighted</h3>
+            <button
+              onClick={handleViewUserPosts}
+              className="text-xl font-semibold text-[#611DD0] hover:text-[#5000B9]"
+            >
+              View All Posts
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <img
-              src="https://images.unsplash.com/photo-1741732311586-6ea6d620f214?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxMnx8fGVufDB8fHx8fA%3D%3D"
-              alt="Vibe 3"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://images.unsplash.com/photo-1722971380810-a4f29b2efc36?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMnx8fGVufDB8fHx8fA%3D%3D"
-              alt="Vibe 2"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://images.unsplash.com/photo-1746950862509-959ed92c42b8?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwyMHx8fGVufDB8fHx8fA%3D%3D"
-              alt="Vibe 1"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://plus.unsplash.com/premium_photo-1746194532300-3417b645aeda?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxNjR8fHxlbnwwfHx8fHw%3D"
-              alt="Vibe 4"
-              className="w-full h-80 object-cover rounded-lg"
-            />
-            <img
-              src="https://plus.unsplash.com/premium_photo-1672363353911-debc1fc593cb?w=600&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxmZWF0dXJlZC1waG90b3MtZmVlZHwxODR8fHxlbnwwfHx8fHw%3D"
-              alt="Vibe 5"
-              className="w-full h-80 object-cover rounded-lg"
-            />
+            {posts.map((post) => (
+              <div
+                key={post._id}
+                className="w-full h-80 object-cover rounded-lg cursor-pointer"
+                onClick={() => handleViewPost(post)}
+              >
+                {post.image ? (
+                  <img
+                    src={post.image}
+                    alt={post.content}
+                    className="w-full h-full object-cover rounded-lg"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                    <p className="text-gray-600">{post.content}</p>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
+      
       {!userId && (
         <div className="absolute left-250 top-10">
           <MoodMaker />
@@ -453,79 +575,171 @@ const UserProfile: React.FC = () => {
 
       {isLoading && <Loader />}
 
-      {showModal && (
-        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white w-[800px] relative rounded-lg p-6 max-h-[80vh] overflow-y-auto animate-slide-in">
-            <h2 className="text-xl font-bold mb-4">
-              {showModal === "followers" ? "Followers" : "Following"} ({showModal === "followers" ? followersCount : followingCount})
-            </h2>
-            <div className="space-y-4">
-              {showModal === "followers" && followersList.length === 0 && (
-                <p className="text-gray-700 text-center">No Followers Yet.</p>
-              )}
-              {showModal === "following" && followingList.length === 0 && (
-                <p className="text-gray-700 text-center">No Following Yet.</p>
-              )}
-              {(showModal === "followers" ? followersList : followingList).map((user) => (
-                <div
-                  key={user._id}
-                  className="flex items-center justify-between p-2 bg-gray-100 rounded-lg"
-                >
-                  <div
-                    className="flex items-center"
-                    onClick={() => {
-                      setShowModal(null);
-                      if (user._id === loggedInUserId || user.username === currentUsername) {
-                        navigate("/profile");
-                      } else {
-                        navigate(`/profile/${user._id}`);
-                      }
-                    }}
-                  >
-                    <img
-                      src={user.profilePicture || defaultAvatar}
-                      alt={user.username}
-                      className="w-12 h-12 rounded-full mr-4"
-                    />
-                    <div className="cursor-pointer">
-                      <p className="font-semibold">{user.fullname}</p>
-                      <p className="text-gray-700">@{user.username}</p>
-                    </div>
-                  </div>
+     {showModal && (
+  <div className="fixed inset-0  bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 w-[800px] relative rounded-xl p-6 max-h-[80vh] overflow-y-auto scrollbar-hide animate-slide-in shadow-xl border border-purple-200">
+      {showModal === "post" && selectedPost && (
+        <>
+          <h2 className="text-2xl font-bold mb-4 text-purple-800">Post Details</h2>
+          <div className="flex flex-col items-center">
+            <img
+              src={selectedPost.user?.profilePicture || defaultAvatar}
+              alt={selectedPost.user?.fullname}
+              className="w-16 h-16 rounded-full object-cover mb-3 border-2 border-purple-300"
+            />
+            <h3 className="font-semibold text-gray-800 text-center flex flex-col">
 
-                  {!userId && (
-                    <>
-                      {showModal === "followers" ? (
-                        <button
-                          onClick={() => setShowRemoveConfirm(user._id)}
-                          className="bg-red-500 text-white px-3 py-1 rounded-full hover:bg-red-600"
-                        >
-                          Remove
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setShowUnfollowConfirm(user._id)}
-                          className="bg-[#611DD0] text-white px-3 py-1 rounded-full hover:bg-[#5000B9] transition"
-                        >
-                          Following
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
+              <span className="text-purple-600">{selectedPost.user?.fullname}</span> 
+              @{selectedPost.user?.username}
+                
+            </h3>
+            <p className="text-sm text-purple-500 mt-1">{formatTime(selectedPost.createdAt)}</p>
+            <p className="mt-4 text-gray-700 text-lg break-words bg-white p-4 rounded-lg w-full border border-purple-100">
+              {selectedPost.content}
+            </p>
+            {selectedPost.image && (
+              <img
+                src={selectedPost.image}
+                alt="post media"
+                className="mt-4 rounded-xl h-[450px] w-full object-cover border border-purple-100 shadow-sm"
+              />
+            )}
+            <div className="flex justify-between text-gray-800 mt-6 text-sm w-full px-4">
+              <span className="flex items-center gap-2 bg-purple-100 px-3 py-1 rounded-full">
+                <BiSolidLike size={20} className="text-gray-700" /> {selectedPost.likes?.length || 0}
+              </span>
+              <span className="flex items-center gap-2 bg-purple-100 px-3 py-1 rounded-full">
+                <FaRegCommentDots size={20} className="text-gray-700" /> {selectedPost.comments?.length || 0}
+              </span>
+              <span className="flex items-center gap-2 bg-purple-100 px-3 py-1 rounded-full">
+                <FaShare size={20} className="text-gray-700" /> {selectedPost.shares || 0}
+              </span>
             </div>
-            <button
-              onClick={handleCloseModal}
-              className="absolute bg-[#611DD0] top-2 right-0 text-white px-2 py-1 rounded-full"
-            >
-              <IoCloseSharp size={25} />
-            </button>
           </div>
-        </div>
+        </>
       )}
+      
+      {showModal === "post" && !selectedPost && userPosts.length > 0 && (
+        <>
+          <h2 className="text-2xl font-bold mb-4 text-purple-800">All Posts by {fullname}</h2>
+          <div className="space-y-6">
+            {userPosts.map((post) => (
+              <div key={post._id} className="border border-purple-200 rounded-xl p-5 bg-white shadow-sm">
+                <div className="flex items-center mb-3">
+                  <img
+                    src={post.user?.profilePicture || defaultAvatar}
+                    alt={post.user?.fullname}
+                    className="w-12 h-12 rounded-full object-cover mr-3 border-2 border-purple-300"
+                  />
+                  <div>
+                    <h3 className="font-semibold text-gray-800">
+                      {post.user?.fullname} <span className="text-gray-600">@{post.user?.username}</span>
+                    </h3>
+                    <p className="text-sm text-purple-500">
+                      {formatTime(post.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-gray-700 text-lg break-words mb-3 bg-purple-50 p-3 rounded-lg">{post.content}</p>
+                {post.image && (
+                  <img
+                    src={post.image}
+                    alt="post media"
+                    className="rounded-xl h-[450px] w-full object-cover mb-3 border border-purple-100"
+                  />
+                )}
+                <div className="flex justify-between text-gray-800 text-sm">
+                  <span className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full">
+                    <BiSolidLike size={18} className="text-gray-700" /> {post.likes?.length || 0}
+                  </span>
+                  <span className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full">
+                    <FaRegCommentDots size={18} className="text-gray-700" /> {post.comments?.length || 0}
+                  </span>
+                  <span className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full">
+                    <FaShare size={18} className="text-gray-700" /> {post.shares || 0}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {showModal !== "post" && (
+        <>
+          <h2 className="text-2xl font-bold mb-4 text-purple-800">
+            {showModal === "followers" ? "Followers" : "Following"} ({showModal === "followers" ? followersCount : followingCount})
+          </h2>
+          <div className="space-y-4">
+            {showModal === "followers" && followersList.length === 0 && (
+              <p className="text-purple-700 text-center bg-purple-100 p-4 rounded-lg">No Followers Yet.</p>
+            )}
+            {showModal === "following" && followingList.length === 0 && (
+              <p className="text-purple-700 text-center bg-purple-100 p-4 rounded-lg">No Following Yet.</p>
+            )}
+            {(showModal === "followers" ? followersList : followingList).map((user) => (
+              <div
+                key={user._id}
+                className="flex items-center justify-between p-4 bg-white rounded-xl border border-purple-200 shadow-sm"
+              >
+                <div
+                  className="flex items-center cursor-pointer"
+                  onClick={() => {
+                    setShowModal(null);
+                    if (user._id === loggedInUserId || user.username === currentUsername) {
+                      navigate("/profile");
+                    } else {
+                      navigate(`/profile/${user._id}`);
+                    }
+                  }}
+                >
+                  <img
+                    src={user.profilePicture || defaultAvatar}
+                    alt={user.username}
+                    className="w-14 h-14 rounded-full mr-4 border-2 border-purple-300"
+                  />
+                  <div>
+                    <p className="font-semibold text-gray-800">{user.fullname}</p>
+                    <p className="text-purple-600">@{user.username}</p>
+                  </div>
+                </div>
+
+                {!userId && (
+                  <>
+                    {showModal === "followers" ? (
+                      <button
+                        onClick={() => setShowRemoveConfirm(user._id)}
+                        className="bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600 transition-colors shadow-sm"
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowUnfollowConfirm(user._id)}
+                        className="bg-[#611DD0] text-white px-4 py-2 rounded-full hover:bg-[#5000B9] transition shadow-sm"
+                      >
+                        Following
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <button
+        onClick={handleCloseModal}
+        className="absolute top-4 right-4 text-[#611DD0] hover:text-[#5000B9] transition-colors bg-purple-100 p-1 rounded-full"
+      >
+        <IoCloseSharp size={25} />
+      </button>
+    </div>
+  </div>
+)}
+
       {showRemoveConfirm && (
-        <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-1/3 text-center animate-slide-in">
             <h2 className="text-xl font-bold mb-4">Remove Follower?</h2>
             <p className="mb-4">Are you sure you want to remove this follower?</p>
@@ -548,7 +762,7 @@ const UserProfile: React.FC = () => {
       )}
 
       {showUnfollowConfirm && (
-        <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-1/3 text-center animate-slide-in">
             <h2 className="text-xl font-bold mb-4">Unfollow User?</h2>
             <p className="mb-4">Are you sure you want to unfollow this user?</p>

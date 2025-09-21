@@ -147,6 +147,13 @@ export const loginUser = asyncHandler(async (req, res) => {
     });
   }
 
+  // Update user online status
+  await User.findByIdAndUpdate(user._id, {
+    onlineStatus: "online",
+    isOnline: true,
+    lastSeen: new Date()
+  });
+
   const accessToken = generateAccessToken(user._id);
   const refreshToken = generateRefreshToken(user._id);
 
@@ -189,7 +196,7 @@ export const googleLogin = asyncHandler(async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid Google token payload",
-      });
+    });
     }
 
     let user = await User.findOne({ email: payload.email });
@@ -201,6 +208,13 @@ export const googleLogin = asyncHandler(async (req, res) => {
         message: "No account found with this Google email. Please register first.",
       });
     }
+
+    // Update user online status
+    await User.findByIdAndUpdate(user._id, {
+      onlineStatus: "online",
+      isOnline: true,
+      lastSeen: new Date()
+    });
 
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
@@ -533,6 +547,24 @@ export const resetPassword = asyncHandler(async (req, res) => {
 
 // @route POST /api/auth/logout
 export const logoutUser = asyncHandler(async (req, res) => {
+  // Get user ID from token before clearing cookies
+  const token = req.cookies.refreshToken;
+  
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+      
+      // Update user online status to offline
+      await User.findByIdAndUpdate(decoded.id, {
+        onlineStatus: "offline",
+        isOnline: false,
+        lastSeen: new Date()
+      });
+    } catch (error) {
+      console.error("Error updating user status on logout:", error);
+    }
+  }
+
   res.cookie("token", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

@@ -19,7 +19,7 @@ import {
   FaEllipsisV,
   FaVideo,
   FaPaperPlane,
-  FaSmile
+  FaSmile,
 } from "react-icons/fa";
 import { BiSolidLike } from "react-icons/bi";
 import { useDispatch, useSelector } from "react-redux";
@@ -45,7 +45,8 @@ export interface Post {
   } | null;
   userId: string;
   userReaction: string | null;
-  reactionCounts?: { // Add reaction counts
+  reactionCounts?: {
+    // Add reaction counts
     [key: string]: number;
   };
 }
@@ -64,6 +65,7 @@ interface Comment {
   };
   content: string;
   createdAt: string;
+  likes: string[];
 }
 
 interface CommentState {
@@ -132,6 +134,59 @@ const Home = () => {
     }
   };
 
+  const handleCommentLike = async (postId: string, commentId: string) => {
+    try {
+      const response = await axiosClient.post(
+        `/api/comments/posts/${postId}/comments/${commentId}/like`,
+        {},
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          comments: prev[postId]?.comments.map((comment) =>
+            comment._id === commentId
+              ? { ...comment, likes: response.data.likes }
+              : comment
+          ),
+        },
+      }));
+
+      // Send comment like notification
+      const comment = commentStates[postId]?.comments.find(
+        (c) => c._id === commentId
+      );
+      if (comment && comment.user._id !== currentUserId) {
+        const userState = {
+          user: {
+            username: fullname || "User",
+            profilePicture: profilePicture || "",
+            _id: currentUserId,
+          },
+        };
+        localStorage.setItem("userState", JSON.stringify(userState));
+
+        socketService.sendCommentLikeNotification({
+          recipientId: comment.user._id,
+          senderId: currentUserId,
+          targetType: "Comment",
+          targetId: commentId,
+          type: "like",
+        });
+      }
+
+      toast.success("Comment like toggled successfully!");
+    } catch (error) {
+      console.error("Error liking comment:", error);
+      toast.error("Failed to like comment");
+    }
+  };
   // Add socket connection on component mount
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -160,7 +215,11 @@ const Home = () => {
     setCommentStates((prev) => ({
       ...prev,
       [postId]: {
-        ...(prev[postId] || { comments: [], isSubmitting: false, showCommentEmojiPicker: false }),
+        ...(prev[postId] || {
+          comments: [],
+          isSubmitting: false,
+          showCommentEmojiPicker: false,
+        }),
         content,
       },
     }));
@@ -171,7 +230,7 @@ const Home = () => {
       console.log("=== SUBMITTING COMMENT DEBUG ===");
       console.log("Post ID:", postId);
       console.log("Comment content:", commentStates[postId]?.content);
-      
+
       setCommentStates((prev) => ({
         ...prev,
         [postId]: {
@@ -191,19 +250,21 @@ const Home = () => {
       );
 
       console.log("Comment response:", response.data);
-      
+
       if (response.data) {
         // Update the post's comment count
         setPosts((prevPosts) => {
           const updatedPosts = prevPosts.map((post) => {
             if (post.id === postId) {
               const newCommentCount = post.comments + 1;
-              console.log(`Updating post ${postId} comments from ${post.comments} to ${newCommentCount}`);
+              console.log(
+                `Updating post ${postId} comments from ${post.comments} to ${newCommentCount}`
+              );
               return { ...post, comments: newCommentCount };
             }
             return post;
           });
-          
+
           console.log("Updated posts with new comment count:", updatedPosts);
           return updatedPosts;
         });
@@ -216,17 +277,39 @@ const Home = () => {
             content: "",
             showInput: false,
             showCommentEmojiPicker: false,
-            comments: [response.data, ...(prev[postId]?.comments || [])],
+            comments: [
+              { ...response.data, likes: [] }, // Initialize likes array
+              ...(prev[postId]?.comments || []),
+            ],
             isSubmitting: false,
           },
         }));
+
+        // Send comment notification
+        const post = posts.find((p) => p.id === postId);
+        if (post && post.userId !== currentUserId) {
+          const userState = {
+            user: {
+              username: fullname || "User",
+              profilePicture: profilePicture || "",
+              _id: currentUserId,
+            },
+          };
+          localStorage.setItem("userState", JSON.stringify(userState));
+
+          socketService.sendCommentNotification({
+            recipientId: post.userId,
+            senderId: currentUserId,
+            targetType: "Post",
+            targetId: postId,
+            type: "comment",
+          });
+        }
 
         toast.success("Comment added successfully!");
       }
     } catch (error: any) {
       console.error("Error adding comment:", error);
-      
-      // More detailed error logging
       if (error.response) {
         console.error("Error response data:", error.response.data);
         console.error("Error response status:", error.response.status);
@@ -238,7 +321,7 @@ const Home = () => {
         console.error("Error message:", error.message);
         toast.error("Failed to add comment");
       }
-      
+
       setCommentStates((prev) => ({
         ...prev,
         [postId]: {
@@ -364,20 +447,25 @@ const Home = () => {
 
         console.log("=== FETCHED POSTS DEBUG ===");
         console.log("Raw response data:", res.data);
-        
+
         const formattedPosts: Post[] = res.data.map((post: any) => {
           // Debug the post object to see what's coming from backend
           console.log("Post from backend:", post);
-          console.log("Comments:", post.comments, "Type:", typeof post.comments);
-          
+          console.log(
+            "Comments:",
+            post.comments,
+            "Type:",
+            typeof post.comments
+          );
+
           // FIX: Handle both array and number types for comments
           let commentCount = 0;
-          if (typeof post.comments === 'number') {
+          if (typeof post.comments === "number") {
             commentCount = post.comments;
           } else if (Array.isArray(post.comments)) {
             commentCount = post.comments.length;
           }
-          
+
           const formattedPost = {
             id: post._id,
             caption: post.content,
@@ -403,7 +491,7 @@ const Home = () => {
             userReaction: post.userReaction || null,
             reactionCounts: post.reactionCounts || {}, // Add reaction counts
           };
-          
+
           console.log("Formatted post comment count:", formattedPost.comments);
           console.log("User reaction:", formattedPost.userReaction);
           console.log("Reaction counts:", formattedPost.reactionCounts);
@@ -445,13 +533,13 @@ const Home = () => {
         commentEmojiPickerRef.current &&
         !commentEmojiPickerRef.current.contains(event.target as Node)
       ) {
-        Object.keys(commentStates).forEach(postId => {
-          setCommentStates(prev => ({
+        Object.keys(commentStates).forEach((postId) => {
+          setCommentStates((prev) => ({
             ...prev,
             [postId]: {
               ...prev[postId],
-              showCommentEmojiPicker: false
-            }
+              showCommentEmojiPicker: false,
+            },
           }));
         });
       }
@@ -598,6 +686,7 @@ const Home = () => {
       setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
+  // Home.tsx - Update the handleReaction function to include sender info
   const handleReaction = async (
     postId: string,
     reactionType: string = "like"
@@ -627,7 +716,7 @@ const Home = () => {
               updatedPost.likes = post.likes + 1;
               updatedPost.reactionCounts = {
                 ...post.reactionCounts,
-                [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1
+                [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1,
               };
             } else {
               // Removing a reaction
@@ -635,7 +724,10 @@ const Home = () => {
               if (post.reactionCounts?.[reactionType]) {
                 updatedPost.reactionCounts = {
                   ...post.reactionCounts,
-                  [reactionType]: Math.max(0, (post.reactionCounts[reactionType] || 0) - 1)
+                  [reactionType]: Math.max(
+                    0,
+                    (post.reactionCounts[reactionType] || 0) - 1
+                  ),
                 };
               }
             }
@@ -649,6 +741,16 @@ const Home = () => {
       if (response.data.liked) {
         const likedPost = posts.find((post) => post.id === postId);
         if (likedPost && likedPost.userId !== currentUserId) {
+          // Save user state to localStorage for socket service to access
+          const userState = {
+            user: {
+              username: fullname || "User",
+              profilePicture: profilePicture || "",
+              _id: currentUserId,
+            },
+          };
+          localStorage.setItem("userState", JSON.stringify(userState));
+
           socketService.sendLikeNotification({
             recipientId: likedPost.userId,
             senderId: currentUserId,
@@ -1112,7 +1214,6 @@ const Home = () => {
                       </>
                     )}
                   </div>
-
                   {/* Comments Section */}
                   {expandedComments[post.id] && (
                     <div className="mt-4 border-t pt-4">
@@ -1128,7 +1229,7 @@ const Home = () => {
                         />
                         <div className="flex-1 relative">
                           <input
-                          style={{background: "#fff"}}
+                            style={{ background: "#fff" }}
                             type="text"
                             placeholder="Add your thoughts..."
                             value={commentStates[post.id]?.content || ""}
@@ -1196,9 +1297,7 @@ const Home = () => {
                             className="flex items-start gap-3"
                           >
                             <img
-                              src={
-                                comment.user.profilePicture || DefaultAvatar
-                              }
+                              src={comment.user.profilePicture || DefaultAvatar}
                               alt={comment.user.username}
                               className="w-8 h-8 rounded-full object-cover"
                               onError={(e) =>
@@ -1222,6 +1321,21 @@ const Home = () => {
                               <p className="text-sm text-gray-800">
                                 {comment.content}
                               </p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <button
+                                  onClick={() =>
+                                    handleCommentLike(post.id, comment._id)
+                                  }
+                                  className={`flex items-center gap-1 text-sm ${
+                                    comment.likes.includes(currentUserId)
+                                      ? "text-[#611DD0]"
+                                      : "text-gray-500"
+                                  } hover:text-[#611DD0]`}
+                                >
+                                  <BiSolidLike size={16} />
+                                  <span>{comment.likes.length}</span>
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}

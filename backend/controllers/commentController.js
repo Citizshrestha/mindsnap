@@ -2,20 +2,18 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { Post } from "../models/post.models.js";
 import { Notification } from "../models/notification.models.js";
+// import { User } from "../models/user.models.js";
+import { io } from "../server.js";
 
-// Create a new comment on a post (embedded in Post)
 export const createComment = asyncHandler(async (req, res) => {
   const { postId } = req.params;
   const { content } = req.body;
 
   console.log("=== COMMENT CREATION STARTED ===");
-  console.log("Received data:", { 
-    postId, 
+  console.log("Received data:", {
+    postId,
     content,
-    user: req.user ? {
-      _id: req.user._id,
-      username: req.user.username
-    } : 'No user'
+    user: req.user ? { _id: req.user._id, username: req.user.username } : "No user",
   });
 
   if (!content || content.trim() === "") {
@@ -27,7 +25,7 @@ export const createComment = asyncHandler(async (req, res) => {
   }
 
   try {
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).populate("user");
     if (!post) {
       console.log("Post not found with ID:", postId);
       return res.status(404).json({
@@ -37,7 +35,7 @@ export const createComment = asyncHandler(async (req, res) => {
     }
 
     console.log("Post found:", post._id);
-    
+
     const comment = {
       user: req.user._id,
       content: content.trim(),
@@ -48,9 +46,35 @@ export const createComment = asyncHandler(async (req, res) => {
     post.comments.push(comment);
     await post.save();
 
+    // Populate the newly created comment
+    const populatedPost = await Post.findById(postId)
+      .populate("comments.user", "username profilePicture")
+      .select("comments");
+    const newComment = populatedPost.comments[populatedPost.comments.length - 1];
+
+    // Create a notification for the post owner (if not commenting on own post)
+    if (post.user._id.toString() !== req.user._id.toString()) {
+      const notification = await Notification.create({
+        recipient: post.user._id,
+        sender: req.user._id,
+        type: "comment",
+        targetType: "Post",
+        targetId: { _id: postId },
+        read: false,
+        message: `${req.user.username} commented on your post`,
+      });
+
+      const populatedNotification = await Notification.findById(notification._id)
+        .populate("sender", "username profilePicture")
+        .populate("recipient", "username");
+
+      // Emit real-time notification
+      io.to(`user_${post.user._id}`).emit("newNotification", populatedNotification);
+      console.log(`📩 Comment notification sent to user_${post.user._id}`);
+    }
+
     console.log("Comment saved successfully");
-    
-    // ... rest of the code
+    res.status(201).json(newComment);
   } catch (error) {
     console.error("Error in createComment:", error);
     console.error("Error stack:", error.stack);

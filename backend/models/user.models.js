@@ -21,6 +21,7 @@ const userSchema = new mongoose.Schema (
       trim: true,
     },
     password: {
+      
       type: String,
       required: [true, 'Please enter a password'],
       minlength: 6,
@@ -120,6 +121,20 @@ const userSchema = new mongoose.Schema (
         ref: 'Post',
       },
     ],
+        onlineStatus: {
+      type: String,
+      enum: ["online", "offline", "away"],
+      default: "offline"
+    },
+    lastSeen: {
+      type: Date,
+      default: Date.now
+    },
+    socketId: String, // Track active socket connection
+    isOnline: {
+      type: Boolean,
+      default: false
+    }
   },
   {timestamps: true}
 );

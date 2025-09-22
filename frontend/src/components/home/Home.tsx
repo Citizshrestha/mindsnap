@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "react-toastify";
 import MaleAvatar from "../../../public/images/Male Avatar.png";
 import FemaleAvatar from "../../../public/images/Female Avatar.webp";
@@ -20,6 +21,9 @@ import {
   FaVideo,
   FaPaperPlane,
   FaSmile,
+  FaReply,
+  FaCaretDown,
+  FaCaretUp,
 } from "react-icons/fa";
 import { BiSolidLike } from "react-icons/bi";
 import { useDispatch, useSelector } from "react-redux";
@@ -46,7 +50,6 @@ export interface Post {
   userId: string;
   userReaction: string | null;
   reactionCounts?: {
-    // Add reaction counts
     [key: string]: number;
   };
 }
@@ -66,6 +69,21 @@ interface Comment {
   content: string;
   createdAt: string;
   likes: string[];
+  replies?: Reply[];
+  replyCount?: number;
+}
+
+interface Reply {
+  _id: string;
+  user: {
+    _id: string;
+    username: string;
+    profilePicture: string;
+  };
+  content: string;
+  createdAt: string;
+  likes: string[];
+  parentComment?: string;
 }
 
 interface CommentState {
@@ -75,8 +93,86 @@ interface CommentState {
     comments: Comment[];
     isSubmitting: boolean;
     showCommentEmojiPicker: boolean;
+    replyingTo: string | null;
+    replyContent: string;
+    showReplyEmojiPicker: string | null;
+    expandedReplies: { [commentId: string]: boolean };
   };
 }
+
+// Animation variants
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 100,
+      damping: 12
+    }
+  }
+};
+
+const scaleVariants = {
+  hidden: { opacity: 0, scale: 0.8 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      type: "spring",
+      stiffness: 200,
+      damping: 15
+    }
+  }
+};
+
+const slideInVariants = {
+  hidden: { opacity: 0, x: -20 },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: {
+      type: "spring",
+      stiffness: 150,
+      damping: 15
+    }
+  }
+};
+
+const fadeInVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      duration: 0.3,
+      ease: "easeOut"
+    }
+  }
+};
+
+const hoverScale = {
+  scale: 1.02,
+  transition: {
+    type: "spring",
+    stiffness: 300,
+    damping: 15
+  }
+};
+
+const tapScale = {
+  scale: 0.98
+};
 
 const Home = () => {
   const dispatch = useDispatch();
@@ -108,6 +204,7 @@ const Home = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const commentEmojiPickerRef = useRef<HTMLDivElement>(null);
+  const replyEmojiPickerRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const optionsMenuRef = useRef<HTMLDivElement>(null);
@@ -187,6 +284,7 @@ const Home = () => {
       toast.error("Failed to like comment");
     }
   };
+
   // Add socket connection on component mount
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -219,8 +317,23 @@ const Home = () => {
           comments: [],
           isSubmitting: false,
           showCommentEmojiPicker: false,
+          replyingTo: null,
+          replyContent: "",
+          showReplyEmojiPicker: null,
+          expandedReplies: {},
         }),
         content,
+      },
+    }));
+  };
+
+  const handleReplyChange = (postId: string, commentId: string, content: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        replyContent: content,
+        replyingTo: commentId,
       },
     }));
   };
@@ -278,7 +391,7 @@ const Home = () => {
             showInput: false,
             showCommentEmojiPicker: false,
             comments: [
-              { ...response.data, likes: [] }, // Initialize likes array
+              { ...response.data, likes: [], replies: [], replyCount: 0 },
               ...(prev[postId]?.comments || []),
             ],
             isSubmitting: false,
@@ -332,6 +445,107 @@ const Home = () => {
     }
   };
 
+  // For adding a reply
+  const handleSubmitReply = async (postId: string, commentId: string) => {
+    try {
+      const replyContent = commentStates[postId]?.replyContent;
+      if (!replyContent?.trim()) return;
+
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          isSubmitting: true,
+        },
+      }));
+
+      // Use the correct endpoint
+      const response = await axiosClient.post(
+        `/api/comments/posts/${postId}/comments/${commentId}/replies`,
+        { content: replyContent },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      if (response.data) {
+        // Update the comment with the new reply
+        setCommentStates((prev) => ({
+          ...prev,
+          [postId]: {
+            ...prev[postId],
+            replyContent: "",
+            replyingTo: null,
+            showReplyEmojiPicker: null,
+            comments: prev[postId]?.comments.map((comment) => {
+              if (comment._id === commentId) {
+                return {
+                  ...comment,
+                  replies: [...(comment.replies || []), response.data],
+                  replyCount: (comment.replyCount || 0) + 1,
+                };
+              }
+              return comment;
+            }),
+            isSubmitting: false,
+          },
+        }));
+
+        toast.success("Reply added successfully!");
+      }
+    } catch (error: any) {
+      console.error("Error adding reply:", error);
+      toast.error(error.response?.data?.message || "Failed to add reply");
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          isSubmitting: false,
+        },
+      }));
+    }
+  };
+
+  // For getting replies
+  const fetchReplies = async (postId: string, commentId: string) => {
+    try {
+      const response = await axiosClient.get(
+        `/api/comments/posts/${postId}/comments/${commentId}/replies`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          comments: prev[postId]?.comments.map((comment) => {
+            if (comment._id === commentId) {
+              return {
+                ...comment,
+                replies: response.data,
+                replyCount: response.data.length,
+              };
+            }
+            return comment;
+          }),
+          expandedReplies: {
+            ...prev[postId]?.expandedReplies,
+            [commentId]: true,
+          },
+        },
+      }));
+    } catch (error) {
+      console.error("Error fetching replies:", error);
+      toast.error("Failed to load replies");
+    }
+  };
+
   const fetchComments = async (postId: string) => {
     try {
       const response = await axiosClient.get(
@@ -351,8 +565,16 @@ const Home = () => {
             showInput: false,
             isSubmitting: false,
             showCommentEmojiPicker: false,
+            replyingTo: null,
+            replyContent: "",
+            showReplyEmojiPicker: null,
+            expandedReplies: {},
           }),
-          comments: response.data,
+          comments: response.data.map((comment: Comment) => ({
+            ...comment,
+            replies: comment.replies || [],
+            replyCount: comment.replyCount || 0,
+          })),
         },
       }));
 
@@ -373,6 +595,25 @@ const Home = () => {
         [postId]: {
           ...prev[postId],
           showCommentEmojiPicker: false,
+          showReplyEmojiPicker: null,
+        },
+      }));
+    }
+  };
+
+  const toggleReplies = (postId: string, commentId: string) => {
+    const currentState = commentStates[postId]?.expandedReplies[commentId];
+    if (!currentState) {
+      fetchReplies(postId, commentId);
+    } else {
+      setCommentStates((prev) => ({
+        ...prev,
+        [postId]: {
+          ...prev[postId],
+          expandedReplies: {
+            ...prev[postId]?.expandedReplies,
+            [commentId]: false,
+          },
         },
       }));
     }
@@ -384,6 +625,18 @@ const Home = () => {
       [postId]: {
         ...prev[postId],
         showCommentEmojiPicker: !prev[postId]?.showCommentEmojiPicker,
+        showReplyEmojiPicker: null,
+      },
+    }));
+  };
+
+  const toggleReplyEmojiPicker = (postId: string, commentId: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        showReplyEmojiPicker: prev[postId]?.showReplyEmojiPicker === commentId ? null : commentId,
+        showCommentEmojiPicker: false,
       },
     }));
   };
@@ -395,6 +648,42 @@ const Home = () => {
         ...prev[postId],
         content: (prev[postId]?.content || "") + emoji.native,
         showCommentEmojiPicker: false,
+      },
+    }));
+  };
+
+  const handleReplyEmojiSelect = (emoji: Emoji, postId: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        replyContent: (prev[postId]?.replyContent || "") + emoji.native,
+        showReplyEmojiPicker: null,
+      },
+    }));
+  };
+
+  const startReply = (postId: string, commentId: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        replyingTo: commentId,
+        replyContent: "",
+        showReplyEmojiPicker: null,
+        showCommentEmojiPicker: false,
+      },
+    }));
+  };
+
+  const cancelReply = (postId: string) => {
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        replyingTo: null,
+        replyContent: "",
+        showReplyEmojiPicker: null,
       },
     }));
   };
@@ -518,7 +807,7 @@ const Home = () => {
     };
 
     fetchPosts();
-  }, []);
+  }, [currentUserId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -539,6 +828,21 @@ const Home = () => {
             [postId]: {
               ...prev[postId],
               showCommentEmojiPicker: false,
+            },
+          }));
+        });
+      }
+
+      if (
+        replyEmojiPickerRef.current &&
+        !replyEmojiPickerRef.current.contains(event.target as Node)
+      ) {
+        Object.keys(commentStates).forEach((postId) => {
+          setCommentStates((prev) => ({
+            ...prev,
+            [postId]: {
+              ...prev[postId],
+              showReplyEmojiPicker: null,
             },
           }));
         });
@@ -686,7 +990,6 @@ const Home = () => {
       setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
-  // Home.tsx - Update the handleReaction function to include sender info
   const handleReaction = async (
     postId: string,
     reactionType: string = "like"
@@ -712,22 +1015,17 @@ const Home = () => {
 
             // Update reaction counts
             if (response.data.liked) {
-              // Adding a reaction
               updatedPost.likes = post.likes + 1;
               updatedPost.reactionCounts = {
                 ...post.reactionCounts,
-                [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1,
+                [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1
               };
             } else {
-              // Removing a reaction
               updatedPost.likes = Math.max(0, post.likes - 1);
               if (post.reactionCounts?.[reactionType]) {
                 updatedPost.reactionCounts = {
                   ...post.reactionCounts,
-                  [reactionType]: Math.max(
-                    0,
-                    (post.reactionCounts[reactionType] || 0) - 1
-                  ),
+                  [reactionType]: Math.max(0, (post.reactionCounts[reactionType] || 0) - 1)
                 };
               }
             }
@@ -744,13 +1042,14 @@ const Home = () => {
           // Save user state to localStorage for socket service to access
           const userState = {
             user: {
-              username: fullname || "User",
-              profilePicture: profilePicture || "",
-              _id: currentUserId,
-            },
+              username: fullname || 'User',
+              profilePicture: profilePicture || '',
+              _id: currentUserId
+            }
           };
-          localStorage.setItem("userState", JSON.stringify(userState));
-
+          localStorage.setItem('userState', JSON.stringify(userState));
+          
+          // Send like notification via socket
           socketService.sendLikeNotification({
             recipientId: likedPost.userId,
             senderId: currentUserId,
@@ -834,135 +1133,289 @@ const Home = () => {
     toast.info("Media cleared");
   };
 
+  const handleDeleteComment = async (postId: string, commentId: string) => {
+    try {
+      const response = await axiosClient.delete(
+        `/api/comments/posts/${postId}/comments/${commentId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
+
+      if (response.data.success) {
+        // Remove the comment from the frontend state
+        setCommentStates((prev) => ({
+          ...prev,
+          [postId]: {
+            ...prev[postId],
+            comments: prev[postId]?.comments.filter(
+              (comment) => comment._id !== commentId
+            ),
+          },
+        }));
+
+        // Update the post's comment count
+        setPosts((prevPosts) =>
+          prevPosts.map((post) => {
+            if (post.id === postId) {
+              return {
+                ...post,
+                comments: Math.max(0, post.comments - 1),
+              };
+            }
+            return post;
+          })
+        );
+
+        toast.success("Comment deleted successfully!");
+      }
+    } catch (error: any) {
+      console.error("Error deleting comment:", error);
+      toast.error(error.response?.data?.message || "Failed to delete comment");
+    }
+  };
+
+  const handleDeleteReply = async (postId: string, commentId: string, replyId: string) => {
+    try {
+      const postResponse = await axiosClient.get(`/api/posts/${postId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        },
+      });
+
+      const post = postResponse.data;
+      const comment = post.comments.find((c: any) => c._id === commentId);
+      
+      if (comment) {
+        // Update the comment to remove the reply
+        const updatedComment = {
+          ...comment,
+          replies: comment.replies.filter((reply: any) => reply._id !== replyId),
+        };
+
+        setCommentStates((prev) => ({
+          ...prev,
+          [postId]: {
+            ...prev[postId],
+            comments: prev[postId]?.comments.map((comment) => {
+              if (comment._id === commentId) {
+                return {
+                  ...comment,
+                  replies: comment.replies?.filter((reply) => reply._id !== replyId) || [],
+                  replyCount: Math.max(0, (comment.replyCount || 0) - 1),
+                };
+              }
+              return comment;
+            }),
+          },
+        }));
+
+        toast.success("Reply deleted successfully!");
+      }
+    } catch (error: any) {
+      console.error("Error deleting reply:", error);
+      toast.error("Failed to delete reply");
+    }
+  };
+
   return (
-    <div className="flex h-screen">
+    <motion.div 
+      className="flex h-screen"
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+    >
       <div className="flex-1 w-[950px] relative flex flex-col min-h-screen">
-        <div className="flex h-[calc(100vh-80px)] overflow-y-auto scrollbar-hide items-start justify-between w-full px-8 py-6 ml-[6rem] mt-[5rem]">
+        <motion.div 
+          className="flex h-[calc(100vh-80px)] overflow-y-auto scrollbar-hide items-start justify-between w-full px-8 py-6 ml-[6rem] mt-[5rem]"
+          variants={containerVariants}
+        >
           <div className="flex-1 max-w-3xl">
             {/* Create Post */}
-            <div className="bg-white flex flex-col shadow-md rounded-2xl p-4 mt-6 mb-4 relative">
+            <motion.div 
+              className="bg-white flex flex-col shadow-md rounded-2xl p-4 mt-6 mb-4 relative"
+              variants={itemVariants}
+              whileHover={{ y: -2, transition: { duration: 0.2 } }}
+              layout
+            >
               <div className="flex items-center gap-4 mt-2">
-                <img
+                <motion.img
                   src={profilePicture || getAvatarByGender(gender)}
                   alt="Profile"
                   className="w-12 h-12 rounded-full object-cover"
                   onError={(e) =>
                     (e.currentTarget.src = getAvatarByGender(gender))
                   }
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.95 }}
                 />
-                <textarea
+                <motion.textarea
                   ref={textareaRef}
                   className="w-full border font-['Nunito Bold'] text-black rounded-xl p-3 outline-none resize-none"
                   rows={2}
                   placeholder="What's on your Heart? #Hashtag... @Mention... Link..."
                   onFocus={() => setShowPostOptions(true)}
-                ></textarea>
+                  whileFocus={{ scale: 1.02 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                ></motion.textarea>
               </div>
 
-              {selectedMedia && (
-                <div className="mt-3 p-2 bg-gray-100 rounded-lg flex items-center justify-between">
-                  <span className="text-sm text-gray-700">
-                    Selected: {selectedMedia.name} ({selectedMediaType})
-                  </span>
-                  <button
-                    onClick={clearSelectedMedia}
-                    className="text-red-500 hover:text-red-700 text-sm"
+              <AnimatePresence>
+                {selectedMedia && (
+                  <motion.div 
+                    className="mt-3 p-2 bg-gray-100 rounded-lg flex items-center justify-between"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
                   >
-                    Remove
-                  </button>
-                </div>
-              )}
-
-              {showPostOptions && (
-                <div className="flex items-center justify-between mt-4 p-2">
-                  <div className="flex gap-4 text-[#611DD0]">
-                    <input
-                      type="file"
-                      ref={imageInputRef}
-                      onChange={(e) => handleFileSelect(e, "image")}
-                      accept="image/*"
-                      className="hidden"
-                    />
-                    <button
-                      className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
-                      onClick={() => imageInputRef.current?.click()}
-                      title="Upload image"
+                    <span className="text-sm text-gray-700">
+                      Selected: {selectedMedia.name} ({selectedMediaType})
+                    </span>
+                    <motion.button
+                      onClick={clearSelectedMedia}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
                     >
-                      <span className="text-2xl">📸</span>
-                    </button>
+                      Remove
+                    </motion.button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-                    <input
-                      type="file"
-                      ref={videoInputRef}
-                      onChange={(e) => handleFileSelect(e, "video")}
-                      accept="video/*"
-                      className="hidden"
-                    />
-                    <button
-                      className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
-                      onClick={() => videoInputRef.current?.click()}
-                      title="Upload video"
-                    >
-                      <FaVideo className="text-xl text-[#611DD0]" />
-                    </button>
-
-                    <button
-                      className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
-                      onClick={toggleEmojiPicker}
-                      title="Add emoji"
-                    >
-                      <span className="text-2xl">😊</span>
-                    </button>
-                  </div>
-                  <button
-                    className="flex items-center gap-2 bg-[#611DD0] text-white px-4 py-2 rounded-lg hover:bg-[#a679ee] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={handlePostSubmit}
-                    disabled={isPosting}
+              <AnimatePresence>
+                {showPostOptions && (
+                  <motion.div 
+                    className="flex items-center justify-between mt-4 p-2"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3 }}
                   >
-                    {isPosting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Posting...
-                      </>
-                    ) : (
-                      "Post"
-                    )}
-                  </button>
-                </div>
-              )}
-              {showEmojiPicker && (
-                <div
-                  ref={emojiPickerRef}
-                  className="absolute top-16 left-16 z-10"
-                >
-                  <Picker
-                    data={data}
-                    onEmojiSelect={handleEmojiSelect}
-                    theme="light"
-                    previewPosition="none"
-                    skinTonePosition="none"
-                  />
-                </div>
-              )}
-            </div>
+                    <div className="flex gap-4 text-[#611DD0]">
+                      <input
+                        type="file"
+                        ref={imageInputRef}
+                        onChange={(e) => handleFileSelect(e, "image")}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                      <motion.button
+                        className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
+                        onClick={() => imageInputRef.current?.click()}
+                        title="Upload image"
+                        whileHover={{ scale: 1.1, rotate: 5 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <span className="text-2xl">📸</span>
+                      </motion.button>
+
+                      <input
+                        type="file"
+                        ref={videoInputRef}
+                        onChange={(e) => handleFileSelect(e, "video")}
+                        accept="video/*"
+                        className="hidden"
+                      />
+                      <motion.button
+                        className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
+                        onClick={() => videoInputRef.current?.click()}
+                        title="Upload video"
+                        whileHover={{ scale: 1.1, rotate: -5 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <FaVideo className="text-xl text-[#611DD0]" />
+                      </motion.button>
+
+                      <motion.button
+                        className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
+                        onClick={toggleEmojiPicker}
+                        title="Add emoji"
+                        whileHover={{ scale: 1.1, rotate: 5 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <span className="text-2xl">😊</span>
+                      </motion.button>
+                    </div>
+                    <motion.button
+                      className="flex items-center gap-2 bg-[#611DD0] text-white px-4 py-2 rounded-lg hover:bg-[#a679ee] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={handlePostSubmit}
+                      disabled={isPosting}
+                      whileHover={!isPosting ? { scale: 1.05 } : {}}
+                      whileTap={!isPosting ? { scale: 0.95 } : {}}
+                    >
+                      {isPosting ? (
+                        <>
+                          <motion.div 
+                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                          ></motion.div>
+                          Posting...
+                        </>
+                      ) : (
+                        "Post"
+                      )}
+                    </motion.button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+              <AnimatePresence>
+                {showEmojiPicker && (
+                  <motion.div
+                    ref={emojiPickerRef}
+                    className="absolute top-16 left-16 z-10"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                  >
+                    <Picker
+                      data={data}
+                      onEmojiSelect={handleEmojiSelect}
+                      theme="light"
+                      previewPosition="none"
+                      skinTonePosition="none"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
 
             {/* Stories Slider */}
-            <Story />
+            <motion.div variants={itemVariants}>
+              <Story />
+            </motion.div>
 
             {/* Post Feeds */}
-            <div className="flex flex-col gap-6">
-              {posts.map((post) => (
-                <div
+            <motion.div 
+              className="flex flex-col gap-6"
+              variants={containerVariants}
+            >
+              {posts.map((post, index) => (
+                <motion.div
                   key={post.id}
                   className="bg-white shadow-md rounded-2xl p-6 relative"
+                  variants={itemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.2, delay: index * 0.1 }}
+                  layout
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                      <img
+                      <motion.img
                         src={post.profilePicture}
                         alt={post.name}
                         className="w-12 h-12 rounded-full object-cover"
                         onError={(e) => (e.currentTarget.src = DefaultAvatar)}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.95 }}
                       />
                       <div>
                         <h3 className="font-semibold text-gray-800">
@@ -975,47 +1428,63 @@ const Home = () => {
                       </div>
                     </div>
                     <div className="relative">
-                      <button
+                      <motion.button
                         className="text-gray-700 p-2 rounded-full hover:bg-gray-100"
                         onClick={() => toggleOptionsMenu(post.id)}
+                        whileHover={{ scale: 1.1, rotate: 90 }}
+                        whileTap={{ scale: 0.9 }}
                       >
                         <FaEllipsisV />
-                      </button>
+                      </motion.button>
 
-                      {showOptionsMenu === post.id && (
-                        <div
-                          ref={optionsMenuRef}
-                          className="absolute right-0 top-10 bg-white shadow-lg rounded-lg p-2 w-48 z-10 border border-gray-200"
-                        >
-                          <button
-                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
-                            onClick={() => handleSavePost(post.id)}
+                      <AnimatePresence>
+                        {showOptionsMenu === post.id && (
+                          <motion.div
+                            ref={optionsMenuRef}
+                            className="absolute right-0 top-10 bg-white shadow-lg rounded-lg p-2 w-48 z-10 border border-gray-200"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
                           >
-                            Save Post
-                          </button>
-                          <button
-                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
-                            onClick={() => handleHidePost(post.id)}
-                          >
-                            Hide this post
-                          </button>
-                          <button
-                            className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
-                            onClick={() => handleReportPost(post.id)}
-                          >
-                            Report post
-                          </button>
-
-                          {post.userId === currentUserId && (
-                            <button
-                              className="w-full text-left p-2 hover:bg-red-50 rounded-md text-red-600 border-t border-gray-200 mt-2"
-                              onClick={() => setShowDeleteConfirm(post.id)}
+                            <motion.button
+                              className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
+                              onClick={() => handleSavePost(post.id)}
+                              whileHover={{ x: 5 }}
+                              whileTap={{ scale: 0.95 }}
                             >
-                              Delete post
-                            </button>
-                          )}
-                        </div>
-                      )}
+                              Save Post
+                            </motion.button>
+                            <motion.button
+                              className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
+                              onClick={() => handleHidePost(post.id)}
+                              whileHover={{ x: 5 }}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              Hide this post
+                            </motion.button>
+                            <motion.button
+                              className="w-full text-left p-2 hover:bg-gray-100 rounded-md text-gray-700"
+                              onClick={() => handleReportPost(post.id)}
+                              whileHover={{ x: 5 }}
+                              whileTap={{ scale: 0.95 }}
+                            >
+                              Report post
+                            </motion.button>
+
+                            {post.userId === currentUserId && (
+                              <motion.button
+                                className="w-full text-left p-2 hover:bg-red-50 rounded-md text-red-600 border-t border-gray-200 mt-2"
+                                onClick={() => setShowDeleteConfirm(post.id)}
+                                whileHover={{ x: 5 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                Delete post
+                              </motion.button>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                   <div className="mt-4">
@@ -1025,20 +1494,27 @@ const Home = () => {
                     {post.caption.match(/#\w+/g) && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {post.caption.match(/#\w+/g)?.map((hashtag, index) => (
-                          <span
+                          <motion.span
                             key={index}
                             className="text-[#611DD0] font-medium"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
                           >
                             {hashtag}
-                          </span>
+                          </motion.span>
                         ))}
                       </div>
                     )}
                   </div>
                   {post.media && (
-                    <div className="mt-4">
+                    <motion.div 
+                      className="mt-4"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                    >
                       {post.media.type === "image" && (
-                        <img
+                        <motion.img
                           src={post.media.url}
                           alt="post media"
                           className="rounded-xl h-[450px] w-full object-cover"
@@ -1049,26 +1525,30 @@ const Home = () => {
                             );
                             e.currentTarget.style.display = "none";
                           }}
+                          whileHover={{ scale: 1.02 }}
+                          transition={{ type: "spring", stiffness: 200 }}
                         />
                       )}
                       {post.media.type === "video" && (
-                        <video
+                        <motion.video
                           autoPlay
                           playsInline
                           controls
                           className="rounded-xl h-[450px] w-full object-cover"
+                          whileHover={{ scale: 1.02 }}
+                          transition={{ type: "spring", stiffness: 200 }}
                         >
                           <source src={post.media.url} type="video/mp4" />
                           Your browser does not support the video tag.
-                        </video>
+                        </motion.video>
                       )}
-                    </div>
+                    </motion.div>
                   )}
                   <div className="flex justify-between text-gray-800 mt-6 text-sm">
                     {/* Only show counts if current user is the post owner */}
                     {post.userId === currentUserId ? (
                       <>
-                        <span
+                        <motion.span
                           className="flex ml-10 items-center gap-2 cursor-pointer relative"
                           onMouseEnter={() =>
                             setShowReactionOptions((prev) => ({
@@ -1082,68 +1562,71 @@ const Home = () => {
                               [post.id]: false,
                             }))
                           }
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                         >
                           {post.userReaction ? (
-                            <span className="text-xl">
+                            <motion.span 
+                              className="text-xl"
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: "spring", stiffness: 300 }}
+                            >
                               {getReactionIcon(post.userReaction)}
-                            </span>
+                            </motion.span>
                           ) : (
                             <BiSolidLike size={20} />
                           )}
                           {post.likes}
-                          {showReactionOptions[post.id] && (
-                            <div className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10">
-                              <span
-                                onClick={() => handleReaction(post.id, "like")}
-                                className="cursor-pointer text-xl"
+                          <AnimatePresence>
+                            {showReactionOptions[post.id] && (
+                              <motion.div 
+                                className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ type: "spring", stiffness: 300 }}
                               >
-                                👍
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "love")}
-                                className="cursor-pointer text-xl"
-                              >
-                                ❤️
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "haha")}
-                                className="cursor-pointer text-xl"
-                              >
-                                😂
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "wow")}
-                                className="cursor-pointer text-xl"
-                              >
-                                😮
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "sad")}
-                                className="cursor-pointer text-xl"
-                              >
-                                😢
-                              </span>
-                            </div>
-                          )}
-                        </span>
+                                {["like", "love", "haha", "wow", "sad"].map((reaction) => (
+                                  <motion.span
+                                    key={reaction}
+                                    onClick={() => handleReaction(post.id, reaction)}
+                                    className="cursor-pointer text-xl"
+                                    whileHover={{ scale: 1.5, y: -5 }}
+                                    whileTap={{ scale: 1.2 }}
+                                    transition={{ type: "spring", stiffness: 400 }}
+                                  >
+                                    {getReactionIcon(reaction)}
+                                  </motion.span>
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.span>
 
-                        <span
+                        <motion.span
                           className="flex items-center gap-2 cursor-pointer"
                           onClick={() => toggleComments(post.id)}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                         >
                           <FaRegCommentDots size={20} />
                           {post.comments}
-                        </span>
+                        </motion.span>
 
-                        <span className="flex mr-10 items-center gap-2">
+                        <motion.span 
+                          className="flex mr-10 items-center gap-2"
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                        >
                           <FaShare size={20} />
                           {post.shares}
-                        </span>
+                        </motion.span>
                       </>
                     ) : (
                       <>
                         {/* Show only icons without counts for non-owners */}
-                        <span
+                        <motion.span
                           className="flex ml-10 items-center gap-2 cursor-pointer relative"
                           onMouseEnter={() =>
                             setShowReactionOptions((prev) => ({
@@ -1157,245 +1640,535 @@ const Home = () => {
                               [post.id]: false,
                             }))
                           }
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                         >
                           {post.userReaction ? (
-                            <span className="text-xl">
+                            <motion.span 
+                              className="text-xl"
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              transition={{ type: "spring", stiffness: 300 }}
+                            >
                               {getReactionIcon(post.userReaction)}
-                            </span>
+                            </motion.span>
                           ) : (
                             <BiSolidLike size={20} />
                           )}
-                          {showReactionOptions[post.id] && (
-                            <div className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10">
-                              <span
-                                onClick={() => handleReaction(post.id, "like")}
-                                className="cursor-pointer text-xl"
+                          <AnimatePresence>
+                            {showReactionOptions[post.id] && (
+                              <motion.div 
+                                className="absolute bottom-4 h-10 left-0 bg-white shadow-lg rounded-lg p-2 flex gap-2 z-10"
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ type: "spring", stiffness: 300 }}
                               >
-                                👍
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "love")}
-                                className="cursor-pointer text-xl"
-                              >
-                                ❤️
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "haha")}
-                                className="cursor-pointer text-xl"
-                              >
-                                😂
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "wow")}
-                                className="cursor-pointer text-xl"
-                              >
-                                😮
-                              </span>
-                              <span
-                                onClick={() => handleReaction(post.id, "sad")}
-                                className="cursor-pointer text-xl"
-                              >
-                                😢
-                              </span>
-                            </div>
-                          )}
-                        </span>
+                                {["like", "love", "haha", "wow", "sad"].map((reaction) => (
+                                  <motion.span
+                                    key={reaction}
+                                    onClick={() => handleReaction(post.id, reaction)}
+                                    className="cursor-pointer text-xl"
+                                    whileHover={{ scale: 1.5, y: -5 }}
+                                    whileTap={{ scale: 1.2 }}
+                                    transition={{ type: "spring", stiffness: 400 }}
+                                  >
+                                    {getReactionIcon(reaction)}
+                                  </motion.span>
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.span>
 
-                        <span
+                        <motion.span
                           className="flex items-center gap-2 cursor-pointer"
                           onClick={() => toggleComments(post.id)}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
                         >
                           <FaRegCommentDots size={20} />
-                        </span>
+                        </motion.span>
 
-                        <span className="flex mr-10 items-center gap-2">
+                        <motion.span 
+                          className="flex mr-10 items-center gap-2"
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.9 }}
+                        >
                           <FaShare size={20} />
-                        </span>
+                        </motion.span>
                       </>
                     )}
                   </div>
+                  
                   {/* Comments Section */}
-                  {expandedComments[post.id] && (
-                    <div className="mt-4 border-t pt-4">
-                      {/* Comment input */}
-                      <div className="flex items-center gap-3 mb-4">
-                        <img
-                          src={profilePicture || getAvatarByGender(gender)}
-                          alt="Profile"
-                          className="w-8 h-8 rounded-full object-cover"
-                          onError={(e) =>
-                            (e.currentTarget.src = getAvatarByGender(gender))
-                          }
-                        />
-                        <div className="flex-1 relative">
-                          <input
-                            style={{ background: "#fff" }}
-                            type="text"
-                            placeholder="Add your thoughts..."
-                            value={commentStates[post.id]?.content || ""}
-                            onChange={(e) =>
-                              handleCommentChange(post.id, e.target.value)
+                  <AnimatePresence>
+                    {expandedComments[post.id] && (
+                      <motion.div 
+                        className="mt-4 border-t pt-4"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        {/* Comment input */}
+                        <div className="flex items-center gap-3 mb-4">
+                          <motion.img
+                            src={profilePicture || getAvatarByGender(gender)}
+                            alt="Profile"
+                            className="w-8 h-8 rounded-full object-cover"
+                            onError={(e) =>
+                              (e.currentTarget.src = getAvatarByGender(gender))
                             }
-                            className="w-full border border-gray-300 text-black rounded-full px-4 py-2 pr-16 focus:outline-none focus:border-[#611DD0]"
-                            onKeyPress={(e) => {
-                              if (
-                                e.key === "Enter" &&
-                                commentStates[post.id]?.content.trim()
-                              ) {
-                                handleSubmitComment(post.id);
-                              }
-                            }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
                           />
-                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
-                            <button
-                              onClick={() => toggleCommentEmojiPicker(post.id)}
-                              className="text-gray-500 hover:text-[#611DD0] transition-colors"
-                            >
-                              <FaSmile size={18} />
-                            </button>
-                            <button
-                              onClick={() => handleSubmitComment(post.id)}
-                              disabled={
-                                !commentStates[post.id]?.content.trim() ||
-                                commentStates[post.id]?.isSubmitting
+                          <div className="flex-1 relative">
+                            <motion.input
+                              style={{ background: "#fff" }}
+                              type="text"
+                              placeholder="Add your thoughts..."
+                              value={commentStates[post.id]?.content || ""}
+                              onChange={(e) =>
+                                handleCommentChange(post.id, e.target.value)
                               }
-                              className="text-[#611DD0] disabled:text-gray-400 transition-colors"
-                            >
-                              {commentStates[post.id]?.isSubmitting ? (
-                                <div className="w-4 h-4 border-2 border-[#611DD0] border-t-transparent rounded-full animate-spin"></div>
-                              ) : (
-                                <FaPaperPlane size={16} />
-                              )}
-                            </button>
-                          </div>
-
-                          {/* Comment emoji picker */}
-                          {commentStates[post.id]?.showCommentEmojiPicker && (
-                            <div
-                              ref={commentEmojiPickerRef}
-                              className="absolute bottom-12 right-0 z-10"
-                            >
-                              <Picker
-                                data={data}
-                                onEmojiSelect={(emoji: Emoji) =>
-                                  handleCommentEmojiSelect(emoji, post.id)
+                              className="w-full border border-gray-300 text-black rounded-full px-4 py-2 pr-16 focus:outline-none focus:border-[#611DD0]"
+                              onKeyPress={(e) => {
+                                if (
+                                  e.key === "Enter" &&
+                                  commentStates[post.id]?.content.trim()
+                                ) {
+                                  handleSubmitComment(post.id);
                                 }
-                                theme="light"
-                                previewPosition="none"
-                                skinTonePosition="none"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Comments list */}
-                      <div className="space-y-3 max-h-60 overflow-y-auto">
-                        {commentStates[post.id]?.comments?.map((comment) => (
-                          <div
-                            key={comment._id}
-                            className="flex items-start gap-3"
-                          >
-                            <img
-                              src={comment.user.profilePicture || DefaultAvatar}
-                              alt={comment.user.username}
-                              className="w-8 h-8 rounded-full object-cover"
-                              onError={(e) =>
-                                (e.currentTarget.src = DefaultAvatar)
-                              }
+                              }}
+                              whileFocus={{ scale: 1.02 }}
+                              transition={{ type: "spring", stiffness: 300 }}
                             />
-                            <div className="flex-1 bg-gray-100 rounded-lg p-3">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-semibold text-sm">
-                                  {comment.user.username}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {new Date(
-                                    comment.createdAt
-                                  ).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                              </div>
-                              <p className="text-sm text-gray-800">
-                                {comment.content}
-                              </p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <button
-                                  onClick={() =>
-                                    handleCommentLike(post.id, comment._id)
-                                  }
-                                  className={`flex items-center gap-1 text-sm ${
-                                    comment.likes.includes(currentUserId)
-                                      ? "text-[#611DD0]"
-                                      : "text-gray-500"
-                                  } hover:text-[#611DD0]`}
-                                >
-                                  <BiSolidLike size={16} />
-                                  <span>{comment.likes.length}</span>
-                                </button>
-                              </div>
+                            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+                              <motion.button
+                                onClick={() => toggleCommentEmojiPicker(post.id)}
+                                className="text-gray-500 hover:text-[#611DD0] transition-colors"
+                                whileHover={{ scale: 1.2 }}
+                                whileTap={{ scale: 0.9 }}
+                              >
+                                <FaSmile size={18} />
+                              </motion.button>
+                              <motion.button
+                                onClick={() => handleSubmitComment(post.id)}
+                                disabled={
+                                  !commentStates[post.id]?.content.trim() ||
+                                  commentStates[post.id]?.isSubmitting
+                                }
+                                className="text-[#611DD0] disabled:text-gray-400 transition-colors"
+                                whileHover={{ scale: 1.2 }}
+                                whileTap={{ scale: 0.9 }}
+                              >
+                                {commentStates[post.id]?.isSubmitting ? (
+                                  <motion.div 
+                                    className="w-4 h-4 border-2 border-[#611DD0] border-t-transparent rounded-full"
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                  ></motion.div>
+                                ) : (
+                                  <FaPaperPlane size={16} />
+                                )}
+                              </motion.button>
                             </div>
-                          </div>
-                        ))}
 
-                        {(!commentStates[post.id]?.comments ||
-                          commentStates[post.id]?.comments.length === 0) && (
-                          <p className="text-center text-gray-500 text-sm py-4">
-                            No comments yet. Be the first to comment!
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                            {/* Comment emoji picker */}
+                            <AnimatePresence>
+                              {commentStates[post.id]?.showCommentEmojiPicker && (
+                                <motion.div
+                                  ref={commentEmojiPickerRef}
+                                  className="absolute bottom-12 right-0 z-10"
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.8 }}
+                                  transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                >
+                                  <Picker
+                                    data={data}
+                                    onEmojiSelect={(emoji: Emoji) =>
+                                      handleCommentEmojiSelect(emoji, post.id)
+                                    }
+                                    theme="light"
+                                    previewPosition="none"
+                                    skinTonePosition="none"
+                                  />
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </div>
+
+                        {/* Comments list */}
+                        <motion.div 
+                          className="space-y-4 max-h-96 overflow-y-auto"
+                          layout
+                        >
+                          {commentStates[post.id]?.comments?.map((comment, index) => (
+                            <motion.div 
+                              key={comment._id} 
+                              className="comment-container"
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.1 }}
+                            >
+                              <div className="flex items-start gap-3">
+                                <motion.img
+                                  src={comment.user.profilePicture || DefaultAvatar}
+                                  alt={comment.user.username}
+                                  className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                                  onError={(e) =>
+                                    (e.currentTarget.src = DefaultAvatar)
+                                  }
+                                  whileHover={{ scale: 1.1 }}
+                                  whileTap={{ scale: 0.95 }}
+                                />
+                                <motion.div 
+                                  className="flex-1 bg-gray-50 rounded-lg p-3"
+                                  whileHover={{ scale: 1.01 }}
+                                  transition={{ type: "spring", stiffness: 300 }}
+                                >
+                                  <div className="flex items-center justify-between mb-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-sm text-gray-800">
+                                        {comment.user.username}
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        {new Date(
+                                          comment.createdAt
+                                        ).toLocaleTimeString([], {
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <p className="text-sm text-gray-800 mb-2">
+                                    {comment.content}
+                                  </p>
+                                  <div className="flex items-center gap-4 mt-2">
+                                    <motion.button
+                                      onClick={() =>
+                                        handleCommentLike(post.id, comment._id)
+                                      }
+                                      className={`flex items-center gap-1 text-xs ${
+                                        comment.likes.includes(currentUserId)
+                                          ? "text-[#611DD0] font-medium"
+                                          : "text-gray-500"
+                                      } hover:text-[#611DD0] transition-colors`}
+                                      whileHover={{ scale: 1.1 }}
+                                      whileTap={{ scale: 0.9 }}
+                                    >
+                                      <BiSolidLike size={14} />
+                                      <span>{comment.likes.length}</span>
+                                    </motion.button>
+                                    <motion.button
+                                      onClick={() => startReply(post.id, comment._id)}
+                                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#611DD0] transition-colors"
+                                      whileHover={{ scale: 1.1 }}
+                                      whileTap={{ scale: 0.9 }}
+                                    >
+                                      <FaReply size={12} />
+                                      <span>Reply</span>
+                                    </motion.button>
+                                    {comment.replyCount > 0 && (
+                                      <motion.button
+                                        onClick={() => toggleReplies(post.id, comment._id)}
+                                        className="flex items-center gap-1 text-xs text-[#611DD0] hover:underline"
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                      >
+                                        {commentStates[post.id]?.expandedReplies[comment._id] ? (
+                                          <>
+                                            <FaCaretUp size={12} />
+                                            <span>Hide {comment.replyCount} replies</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <FaCaretDown size={12} />
+                                            <span>View {comment.replyCount} replies</span>
+                                          </>
+                                        )}
+                                      </motion.button>
+                                    )}
+                                  </div>
+                                </motion.div>
+                              </div>
+
+                              {/* Reply input */}
+                              <AnimatePresence>
+                                {commentStates[post.id]?.replyingTo === comment._id && (
+                                  <motion.div 
+                                    className="ml-11 mt-3 flex items-center gap-2"
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                  >
+                                    <motion.img
+                                      src={profilePicture || getAvatarByGender(gender)}
+                                      alt="Profile"
+                                      className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                                      onError={(e) =>
+                                        (e.currentTarget.src = getAvatarByGender(gender))
+                                      }
+                                      whileHover={{ scale: 1.1 }}
+                                      whileTap={{ scale: 0.95 }}
+                                    />
+                                    <div className="flex-1 relative">
+                                      <motion.input
+                                        style={{ background: "#fff" }}
+                                        type="text"
+                                        placeholder="Write a reply..."
+                                        value={commentStates[post.id]?.replyContent || ""}
+                                        onChange={(e) =>
+                                          handleReplyChange(post.id, comment._id, e.target.value)
+                                        }
+                                        className="w-full border border-gray-300 text-black rounded-full px-3 py-1 pr-16 focus:outline-none focus:border-[#611DD0] text-sm"
+                                        onKeyPress={(e) => {
+                                          if (
+                                            e.key === "Enter" &&
+                                            commentStates[post.id]?.replyContent.trim()
+                                          ) {
+                                            handleSubmitReply(post.id, comment._id);
+                                          }
+                                        }}
+                                        whileFocus={{ scale: 1.02 }}
+                                        transition={{ type: "spring", stiffness: 300 }}
+                                      />
+                                      <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-2">
+                                        <motion.button
+                                          onClick={() => toggleReplyEmojiPicker(post.id, comment._id)}
+                                          className="text-gray-400 hover:text-[#611DD0] transition-colors"
+                                          whileHover={{ scale: 1.2 }}
+                                          whileTap={{ scale: 0.9 }}
+                                        >
+                                          <FaSmile size={14} />
+                                        </motion.button>
+                                        <motion.button
+                                          onClick={() => handleSubmitReply(post.id, comment._id)}
+                                          disabled={
+                                            !commentStates[post.id]?.replyContent.trim() ||
+                                            commentStates[post.id]?.isSubmitting
+                                          }
+                                          className="text-[#611DD0] disabled:text-gray-400 transition-colors"
+                                          whileHover={{ scale: 1.2 }}
+                                          whileTap={{ scale: 0.9 }}
+                                        >
+                                          <FaPaperPlane size={12} />
+                                        </motion.button>
+                                        <motion.button
+                                          onClick={() => cancelReply(post.id)}
+                                          className="text-gray-400 hover:text-red-500 transition-colors"
+                                          whileHover={{ scale: 1.2 }}
+                                          whileTap={{ scale: 0.9 }}
+                                        >
+                                          ×
+                                        </motion.button>
+                                      </div>
+
+                                      {/* Reply emoji picker */}
+                                      <AnimatePresence>
+                                        {commentStates[post.id]?.showReplyEmojiPicker === comment._id && (
+                                          <motion.div
+                                            ref={replyEmojiPickerRef}
+                                            className="absolute bottom-8 right-0 z-10"
+                                            initial={{ opacity: 0, scale: 0.8 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.8 }}
+                                            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                          >
+                                            <Picker
+                                              data={data}
+                                              onEmojiSelect={(emoji: Emoji) =>
+                                                handleReplyEmojiSelect(emoji, post.id, comment._id)
+                                              }
+                                              theme="light"
+                                              previewPosition="none"
+                                              skinTonePosition="none"
+                                            />
+                                          </motion.div>
+                                        )}
+                                      </AnimatePresence>
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+
+                              {/* Replies list */}
+                              <AnimatePresence>
+                                {commentStates[post.id]?.expandedReplies[comment._id] && (
+                                  <motion.div 
+                                    className="ml-11 mt-3 space-y-3 border-l-2 border-gray-200 pl-3"
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: "auto" }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    transition={{ duration: 0.3 }}
+                                  >
+                                    {comment.replies?.map((reply, replyIndex) => (
+                                      <motion.div 
+                                        key={reply._id} 
+                                        className="flex items-start gap-2"
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: replyIndex * 0.05 }}
+                                      >
+                                        <motion.img
+                                          src={reply.user.profilePicture || DefaultAvatar}
+                                          alt={reply.user.username}
+                                          className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                                          onError={(e) =>
+                                            (e.currentTarget.src = DefaultAvatar)
+                                          }
+                                          whileHover={{ scale: 1.1 }}
+                                          whileTap={{ scale: 0.95 }}
+                                        />
+                                        <motion.div 
+                                          className="flex-1 bg-gray-50 rounded-lg p-2"
+                                          whileHover={{ scale: 1.01 }}
+                                          transition={{ type: "spring", stiffness: 300 }}
+                                        >
+                                          <div className="flex items-center justify-between mb-1">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-semibold text-xs text-gray-800">
+                                                {reply.user.username}
+                                              </span>
+                                              <span className="text-xs text-gray-500">
+                                                {new Date(
+                                                  reply.createdAt
+                                                ).toLocaleTimeString([], {
+                                                  hour: "2-digit",
+                                                  minute: "2-digit",
+                                                })}
+                                              </span>
+                                            </div>
+                                          </div>
+                                          <p className="text-xs text-gray-800">
+                                            {reply.content}
+                                          </p>
+                                          <div className="flex items-center gap-3 mt-1">
+                                            <motion.button
+                                              onClick={() => handleCommentLike(post.id, reply._id)}
+                                              className={`flex items-center gap-1 text-xs ${
+                                                reply.likes.includes(currentUserId)
+                                                  ? "text-[#611DD0] font-medium"
+                                                  : "text-gray-500"
+                                              } hover:text-[#611DD0] transition-colors`}
+                                              whileHover={{ scale: 1.1 }}
+                                              whileTap={{ scale: 0.9 }}
+                                            >
+                                              <BiSolidLike size={12} />
+                                              <span>{reply.likes.length}</span>
+                                            </motion.button>
+                                            <motion.button
+                                              onClick={() => startReply(post.id, comment._id)}
+                                              className="flex items-center gap-1 text-xs text-gray-500 hover:text-[#611DD0] transition-colors"
+                                              whileHover={{ scale: 1.1 }}
+                                              whileTap={{ scale: 0.9 }}
+                                            >
+                                              <FaReply size={10} />
+                                              <span>Reply</span>
+                                            </motion.button>
+                                          </div>
+                                        </motion.div>
+                                      </motion.div>
+                                    ))}
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </motion.div>
+                          ))}
+
+                          {(!commentStates[post.id]?.comments ||
+                            commentStates[post.id]?.comments.length === 0) && (
+                            <motion.p 
+                              className="text-center text-gray-500 text-sm py-4"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                            >
+                              No comments yet. Be the first to comment!
+                            </motion.p>
+                          )}
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* Right Sidebar */}
-      <div className="w-1/4 moodMaker sticky top-[12rem] right-10 self-start ml-16">
+      <motion.div 
+        className="w-1/4 moodMaker sticky top-[12rem] right-10 self-start ml-16"
+        variants={slideInVariants}
+        initial="hidden"
+        animate="visible"
+        transition={{ delay: 0.5 }}
+      >
         <HashtagList />
-      </div>
+      </motion.div>
 
       {/* Delete Confirmation Modal */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96">
-            <h3 className="text-xl font-semibold mb-4">Confirm Deletion</h3>
-            <p className="text-gray-700 mb-6">
-              Are you sure you want to delete this post? This action cannot be
-              undone.
-            </p>
-            <div className="flex justify-end gap-4">
-              <button
-                className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                onClick={() => setShowDeleteConfirm(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                onClick={() => handleDeletePost(showDeleteConfirm)}
-                disabled={isDeleting === showDeleteConfirm}
-              >
-                {isDeleting === showDeleteConfirm ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Deleting...
-                  </>
-                ) : (
-                  "Delete"
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <motion.div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div 
+              className="bg-white rounded-lg p-6 w-96"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20 }}
+            >
+              <h3 className="text-xl font-semibold mb-4">Confirm Deletion</h3>
+              <p className="text-gray-700 mb-6">
+                Are you sure you want to delete this post? This action cannot be
+                undone.
+              </p>
+              <div className="flex justify-end gap-4">
+                <motion.button
+                  className="px-4 py-2 text-gray-600 hover:text-gray-800"
+                  onClick={() => setShowDeleteConfirm(null)}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  onClick={() => handleDeletePost(showDeleteConfirm)}
+                  disabled={isDeleting === showDeleteConfirm}
+                  whileHover={isDeleting !== showDeleteConfirm ? { scale: 1.05 } : {}}
+                  whileTap={isDeleting !== showDeleteConfirm ? { scale: 0.95 } : {}}
+                >
+                  {isDeleting === showDeleteConfirm ? (
+                    <>
+                      <motion.div 
+                        className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      ></motion.div>
+                      Deleting...
+                    </>
+                  ) : (
+                    "Delete"
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 };
 

@@ -47,7 +47,7 @@ interface CheckUserExistsResponse {
   message?: string;
 }
 
-interface GoogleLoginResponse{
+interface GoogleLoginResponse {
   success: boolean;
   message: string;
   accessToken: string;
@@ -56,9 +56,21 @@ interface GoogleLoginResponse{
   email: string;
 }
 
+interface ChangePasswordResponse {
+  success: boolean;
+  message: string;
+}
+
+
 export const login = async (email: string, password: string): Promise<LoginResponse> => {
   try {
     const response = await axiosClient.post("/api/auth/login", { email, password });
+    if (response.data.accessToken) {
+      localStorage.setItem("accessToken", response.data.accessToken);
+      localStorage.setItem("userId", response.data._id);
+      localStorage.setItem("email", response.data.email);
+      axiosClient.defaults.headers.Authorization = `Bearer ${response.data.accessToken}`;
+    }
     return response.data;
   } catch (error: unknown) {
     if (axios.isAxiosError(error) && error.response) {
@@ -89,30 +101,44 @@ export const register = async (
   }
 };
 
-export const googleLogin = async(credential: string): Promise<GoogleLoginResponse> => {
+export const googleLogin = async (credential: string): Promise<GoogleLoginResponse> => {
   try {
-    const res = await axiosClient.post("/api/auth/google-login",{credential});
+    const res = await axiosClient.post("/api/auth/google-login", { credential });
+    if (res.data.accessToken) {
+      localStorage.setItem("accessToken", res.data.accessToken);
+      localStorage.setItem("userId", res.data._id);
+      axiosClient.defaults.headers.Authorization = `Bearer ${res.data.accessToken}`;
+    }
     return res.data;
-  } catch (error:  unknown) {
-    if (axios.isAxiosError(error) && error.response){
-      console.error("Google Login API Error: ",error.response.data)
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Google Login API Error: ", error.response.data);
     } else {
-      console.error("Google Login API Error: ",(error as Error).message)
+      console.error("Google Login API Error: ", (error as Error).message);
     }
     throw error;
   }
-}
+};
 
 export const logout = async (): Promise<void> => {
   try {
     await axiosClient.post("/api/auth/logout");
-    localStorage.removeItem("accessToken");
+    
+    // Clear ALL localStorage data completely
+    localStorage.clear();
+    
+    // Clear Authorization header
+    delete axiosClient.defaults.headers.Authorization;
   } catch (error: unknown) {
     if (axios.isAxiosError(error) && error.response) {
       console.error("Logout API Error:", error.response.data);
     } else {
       console.error("Logout API Error:", (error as Error).message);
     }
+    
+    // Ensure complete cleanup even if server call fails
+    localStorage.clear();
+    delete axiosClient.defaults.headers.Authorization;
     throw error;
   }
 };
@@ -159,9 +185,12 @@ export const isAuthenticated = async (userId: string): Promise<isAuthResponse> =
   }
 };
 
-export const sendResetPasswordOtp = async (email: string): Promise<ResetPasswordResponse> => {
+export const sendResetPasswordOtp = async (email: string): Promise<ResetPasswordResponse & { userId?: string }> => {
   try {
     const response = await axiosClient.post("/api/auth/sendResetPasswordOtp", { email });
+    if (response.data.success && response.data.userId) {
+      localStorage.setItem("userId", response.data.userId); 
+    }
     return response.data;
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response) {
@@ -210,6 +239,22 @@ export const checkUserExists = async (email: string): Promise<CheckUserExistsRes
       console.error("Check User Exists API Error:", error.response.data);
     } else {
       console.error("Check User Exists API Error:", (error as Error).message);
+    }
+    throw error;
+  }
+};
+
+export const changePassword = async (newPassword: string): Promise<ChangePasswordResponse> => {
+  try {
+    const response = await axiosClient.post("/api/auth/change-password", { 
+      newPassword 
+    });
+    return response.data;
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Change Password API Error:", error.response.data);
+    } else {
+      console.error("Change Password Error:", (error as Error).message);
     }
     throw error;
   }

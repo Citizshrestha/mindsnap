@@ -444,7 +444,7 @@ The MindSnap Team 🚀
     success: true,
     message: "If an account with this email exists, an OTP has been sent.",
     userId: user._id,
-    attemptsLeft: 3 - user.otpAttempts,
+    attemptsLeft: 5 - user.otpAttempts, // Temporarily increased to 5 attempts
     nextAttempt: new Date(user.lastOtpAttempt + 60 * 60 * 1000),
   });
 });
@@ -519,7 +519,8 @@ export const resetPassword = asyncHandler(async (req, res) => {
     });
   }
 
-  if (user.resetOtp || user.resetOtpExpireAt !== 0) {
+  // Check if OTP verification is still pending (both fields should be cleared after successful verification)
+  if (user.resetOtp && user.resetOtp.trim() !== "" && user.resetOtpExpireAt > 0) {
     return res.status(400).json({
       success: false,
       message: "OTP verification required before resetting password.",
@@ -547,35 +548,42 @@ export const resetPassword = asyncHandler(async (req, res) => {
 
 // @route POST /api/auth/logout
 export const logoutUser = asyncHandler(async (req, res) => {
-  // Get user ID from token before clearing cookies
-  const token = req.cookies.refreshToken;
-  
-  if (token) {
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
-      
+  try {
+    // Get user ID from the authenticated request (set by protect middleware)
+    const userId = req.user._id;
+    
+    if (userId) {
       // Update user online status to offline
-      await User.findByIdAndUpdate(decoded.id, {
+      await User.findByIdAndUpdate(userId, {
         onlineStatus: "offline",
         isOnline: false,
         lastSeen: new Date()
       });
-    } catch (error) {
-      console.error("Error updating user status on logout:", error);
+      
+      console.log(`User ${userId} logged out and set to offline`);
     }
+
+    // Clear refresh token cookie if it exists
+    res.cookie("refreshToken", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "Strict",
+      expires: new Date(0),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    console.error("Error during logout:", error);
+    
+    // Still return success even if status update fails
+    return res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
   }
-
-  res.cookie("token", "", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "Strict",
-    expires: new Date(0),
-  });
-
-  return res.status(200).json({
-    success: true,
-    message: "Logout successful",
-  });
 });
 
 // @route POST /api/auth/refresh
@@ -612,4 +620,41 @@ export const refreshAccessToken = asyncHandler(async (req, res) => {
       message: "Invalid refresh token.",
     });
   }
+});
+
+// @route POST /api/auth/change-password
+export const changePassword = asyncHandler(async (req, res) => {
+  const { newPassword } = req.body;
+
+  if (!newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "New password is required",
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: "New password must be at least 6 characters long",
+    });
+  }
+
+  const user = await User.findById(req.user._id);
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found",
+    });
+  }
+
+  // Update password directly without current password verification
+  user.password = newPassword;
+  await user.save();
+
+  return res.status(200).json({
+    success: true,
+    message: "Password changed successfully",
+  });
 });

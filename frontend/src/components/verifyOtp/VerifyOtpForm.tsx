@@ -19,11 +19,15 @@ const VerifyOtpForm = () => {
   const email = localStorage.getItem("resetEmail") || "";
 
   useEffect(() => {
-    document.body.classList.add("componentBackground");
-    return () => {
-      document.body.classList.remove("componentBackground");
-    };
-  }, []);
+  document.body.classList.add("componentBackground");
+  if (!userId || !email) {
+    toast.error("Invalid session. Please request a new OTP.");
+    navigate("/forgot-password");
+  }
+  return () => {
+    document.body.classList.remove("componentBackground");
+  };
+}, [userId, email, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ otp: e.target.value });
@@ -40,22 +44,29 @@ const VerifyOtpForm = () => {
         throw new Error("Please enter the OTP");
       }
       if (!userId) {
-        throw new Error("User ID not found. Please try again.");
+        throw new Error("User ID not found. Please request a new OTP.");
       }
 
       const response = await verifyResetPasswordOtp(userId, formData.otp);
       toast.success(response.message);
+   
+      // Don't remove resetEmail here - let the reset password form handle cleanup
+      // localStorage.removeItem("resetEmail");
       navigate("/reset-password");
     } catch (err: unknown) {
       let errorMessage = "An unexpected error occurred. Please try again.";
-
-      // Check if the error is an Axios error with a response
       if (axios.isAxiosError(err)) {
-        if (err.response) {
+        if (err.response?.status === 401) {
+          errorMessage = "Session expired. Please request a new OTP.";
+          navigate("/forgot-password"); // Redirect to request new OTP
+        } else if (err.response?.status === 400) {
+          errorMessage = "Invalid OTP. Please try again.";
+        } else if (err.response?.status === 404) {
+          errorMessage = "User not found. Please request a new OTP.";
+        } else if (err.response) {
           errorMessage = err.response.data?.message || "Failed to verify OTP.";
         } else if (err.request) {
-          errorMessage =
-            "Network Error: Unable to reach the server. Please check your connection.";
+          errorMessage = "Network Error: Unable to reach the server.";
         } else {
           errorMessage = err.message || errorMessage;
         }
@@ -70,6 +81,7 @@ const VerifyOtpForm = () => {
       setIsLoading(false);
     }
   };
+
   const handleBackToLogin = () => {
     navigate("/");
   };
@@ -77,7 +89,7 @@ const VerifyOtpForm = () => {
   return (
     <div
       style={{ background: "transparent" }}
-      className="flex flex-col items-center justify-center h-screen text-white "
+      className="flex flex-col items-center justify-center h-screen text-white"
     >
       <div className="flex items-center mb-8">
         <div className="w-20 h-20 mr-4">

@@ -28,55 +28,57 @@ const ForgotPassword = () => {
     setError(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
-    try {
-      if (!formData.email) {
-        throw new Error("Please enter your email");
-      }
-
-      const response = await sendResetPasswordOtp(formData.email);
-      localStorage.setItem("resetEmail", formData.email);
-      toast.success(response.message);
-      navigate("/verify-otp");
-    } catch (err: unknown) {
-      let errorMessage = "An unexpected error occurred. Please try again.";
-
-      if (axios.isAxiosError(err)) {
-        if (err.response) {
-          errorMessage = err.response.data?.message || "Failed to send OTP. Please try again later.";
-          switch (err.response.status) {
-            case 400:
-              errorMessage = err.response.data?.message || "Invalid email format. Please try again.";
-              break;
-            case 404:
-              errorMessage = "User not found. Please register first.";
-              break;
-            case 429:
-              errorMessage = err.response.data?.message || "Too many OTP requests. Please try again later.";
-              break;
-            case 500:
-              errorMessage = "Failed to send OTP email. Please try again later.";
-              break;
-            default:
-              errorMessage = "Failed to send OTP. Please try again later.";
-          }
-        } else {
-          errorMessage = "Network Error: Unable to reach the server. Please check your connection.";
-        }
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      console.error("Forgot Password Error:", err);
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setError(null);
+  try {
+    if (!formData.email) {
+      throw new Error("Please enter your email");
     }
-  };
 
+    const response = await sendResetPasswordOtp(formData.email);
+    localStorage.setItem("resetEmail", formData.email);
+    if (response.userId) {
+      localStorage.setItem("userId", response.userId); // Ensure userId is set
+    }
+    toast.success(response.message);
+    navigate("/verify-otp");
+  } catch (err: unknown) {
+    let errorMessage = "An unexpected error occurred. Please try again.";
+
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        errorMessage = err.response.data?.message || "Failed to send OTP. Please try again later.";
+        switch (err.response.status) {
+          case 400:
+            errorMessage = err.response.data?.message || "Invalid email format. Please try again.";
+            break;
+          case 404:
+            errorMessage = "User not found. Please register first.";
+            break;
+          case 429:
+            errorMessage = err.response.data?.message || "Too many OTP requests. Please try again later.";
+            break;
+          case 500:
+            errorMessage = "Failed to send OTP email. Please try again later.";
+            break;
+          default:
+            errorMessage = "Failed to send OTP. Please try again later.";
+        }
+      } else {
+        errorMessage = "Network Error: Unable to reach the server. Please check your connection.";
+      }
+    } else if (err instanceof Error) {
+      errorMessage = err.message;
+    }
+    console.error("Forgot Password Error:", err);
+    setError(errorMessage);
+    toast.error(errorMessage);
+  } finally {
+    setIsLoading(false);
+  }
+};
   const handleBackToLogin = () => {
     navigate("/");
   };

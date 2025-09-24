@@ -18,15 +18,26 @@ const ResetPasswordForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isResetSuccessful, setIsResetSuccessful] = useState(false);
   const navigate = useNavigate();
   const userId = localStorage.getItem("userId") || "";
 
    useEffect(() => {
       document.body.classList.add("componentBackground");
+      
+      // Only check session if reset hasn't been successful yet
+      if (!isResetSuccessful) {
+        const resetEmail = localStorage.getItem("resetEmail");
+        if (!userId || !resetEmail) {
+          toast.error("Invalid session. Please request a new OTP.");
+          navigate("/forgot-password");
+        }
+      }
+      
       return () => {
         document.body.classList.remove("componentBackground");
       };
-    }, []);
+    }, [userId, navigate, isResetSuccessful]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -37,44 +48,60 @@ const ResetPasswordForm = () => {
     setError(null);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsLoading(true);
+  setError(null);
 
-    try {
-      if (!formData.newPassword || !formData.confirmPassword) {
-        throw new Error("Please fill in all fields");
-      }
-      if (formData.newPassword !== formData.confirmPassword) {
-        throw new Error("Passwords do not match");
-      }
-      if (!userId) {
-        throw new Error("User ID not found. Please try again.");
-      }
-
-      const response = await resetPassword(userId, formData.newPassword);
-      localStorage.removeItem("resetEmail");
-      toast.success(response.message);
-      navigate("/");
-    } catch (err: unknown) {
-      let errorMessage = "An unexpected error occurred. Please try again.";
-
-      if (axios.isAxiosError(err)) {
-        errorMessage = err.response?.data?.message || "Failed to reset password.";
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      } else {
-        errorMessage = "Network Error: Unable to reach the server. Please check your connection.";
-      }
-
-      console.error("Reset Password Error:", err);
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
+  try {
+    if (!formData.newPassword || !formData.confirmPassword) {
+      throw new Error("Please fill in all fields");
     }
-  };
+    if (formData.newPassword !== formData.confirmPassword) {
+      throw new Error("Passwords do not match");
+    }
+    if (!userId) {
+      throw new Error("User ID not found. Please try again.");
+    }
+
+    const response = await resetPassword(userId, formData.newPassword);
+    
+    // Mark reset as successful to prevent session check
+    setIsResetSuccessful(true);
+    
+    // Clean up session data
+    localStorage.removeItem("resetEmail");
+    localStorage.removeItem("userId");
+    
+    toast.success(response.message);
+    
+    // Navigate to login after a short delay to ensure toast is shown
+    setTimeout(() => {
+      navigate("/");
+    }, 1000);
+  } catch (err: unknown) {
+    let errorMessage = "An unexpected error occurred. Please try again.";
+
+    if (axios.isAxiosError(err)) {
+      if (err.response?.status === 401) {
+        errorMessage = "Session expired. Please request a new OTP.";
+        navigate("/forgot-password"); // Redirect to request new OTP
+      } else {
+        errorMessage = err.response?.data?.message || "Failed to reset password.";
+      }
+    } else if (err instanceof Error) {
+      errorMessage = err.message;
+    } else {
+      errorMessage = "Network Error: Unable to reach the server. Please check your connection.";
+    }
+
+    console.error("Reset Password Error:", err);
+    setError(errorMessage);
+    toast.error(errorMessage);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);

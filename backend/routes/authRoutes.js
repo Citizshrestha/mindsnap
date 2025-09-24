@@ -12,7 +12,8 @@ import {
   resetPassword,
   refreshAccessToken,
   checkUserExists,
-  googleLogin
+  googleLogin,
+  changePassword
 } from '../controllers/authController.js';
 import protect  from '../middleware/authMiddleware.js';
 
@@ -33,6 +34,7 @@ router.post('/verifyEmail', protect, verifyEmail);
 router.post('/isAuth', protect, isAuthenticated); 
 router.post('/verifyResetPasswordOtp',protect, verifyResetPasswordOtp);
 router.post('/resetPassword', protect, resetPassword);
+router.post('/change-password', protect, changePassword);
 
 
 export default router;

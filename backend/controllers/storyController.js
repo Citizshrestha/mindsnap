@@ -1,16 +1,16 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { Story } from "../models/story.models.js";
-import { Notification } from "../models/notification.models.js"; 
-import { User } from "../models/user.models.js"; 
+import { Notification } from "../models/notification.models.js";
+import { User } from "../models/user.models.js";
+import mongoose from "mongoose"; 
 
-// Create a new story
 export const createStory = asyncHandler(async (req, res) => {
   const { caption, content } = req.body;
   const userId = req.user._id;
 
-  if (!caption && !content) {
+  if (!content) {
     res.status(400);
-    throw new Error("Caption or content is required");
+    throw new Error("Content is required");
   }
 
   const story = await Story.create({
@@ -20,7 +20,59 @@ export const createStory = asyncHandler(async (req, res) => {
     expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), 
   });
 
-  res.status(201).json({ success: true, story });
+  await story.populate("user", "username profilePicture");
+
+  res.status(201).json({ 
+    success: true, 
+    story: {
+      _id: story._id,
+      user: {
+        _id: story.user._id,
+        username: story.user.username,
+        profilePicture: story.user.profilePicture
+      },
+      caption: story.caption,
+      content: story.content,
+      expiresAt: story.expiresAt,
+      createdAt: story.createdAt, // Make sure this is included
+      views: story.views,
+      likes: story.likes
+    }
+  });
+});
+
+export const getStories = asyncHandler(async (req, res) => {
+  console.log("User ID from token:", req.user._id);
+  const currentUser = await User.findById(req.user._id).select("following");
+  const userIds = [req.user._id, ...(currentUser?.following || [])];
+  console.log("User IDs for query:", userIds);
+
+  const stories = await Story.find({
+    user: { $in: userIds },
+    expiresAt: { $gt: new Date() },
+  })
+    .populate("user", "username profilePicture")
+    .sort({ createdAt: -1 });
+
+  console.log("Raw stories from DB:", stories);
+  
+  const formattedStories = stories.map(story => ({
+    _id: story._id,
+    user: { 
+      username: story.user.username, 
+      profilePicture: story.user.profilePicture,
+      isCurrentUser: story.user._id.toString() === req.user._id.toString()
+    },
+    caption: story.caption,
+    content: story.content,
+    expiresAt: story.expiresAt,
+    createdAt: story.createdAt, // Make sure this is included
+    views: story.views,
+    likes: story.likes,
+  }));
+
+  console.log("Formatted stories for response:", formattedStories);
+  res.json({ stories: formattedStories });
 });
 
 export const deleteStory = asyncHandler(async (req, res) => {
@@ -45,27 +97,14 @@ export const deleteStory = asyncHandler(async (req, res) => {
   }
 
   await Story.deleteOne({ _id: storyId });
-  
+
   res.json({
     success: true,
     message: "Story deleted successfully",
   });
 });
 
-// Get stories for the authenticated user and followed users
-export const getStories = asyncHandler(async (req, res) => {
-  const currentUser = await User.findById(req.user._id).select('following');
-  const userIds = [req.user._id, ...(currentUser?.following || [])];
 
-  const stories = await Story.find({ 
-    user: { $in: userIds },
-    expiresAt: { $gt: new Date() } 
-  })
-    .populate("user", "username fullname profilePicture")
-    .sort({ createdAt: -1 });
-
-  res.json({ stories });
-});
 
 // Like/unlike a story
 export const likeStory = asyncHandler(async (req, res) => {

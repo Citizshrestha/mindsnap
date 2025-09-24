@@ -13,6 +13,7 @@ router.get("/", protect, getStories);
 // Like/unlike a story
 router.post("/:storyId/like", protect, likeStory);
 
+// delete a story
 router.delete("/:storyId", protect, deleteStory);
 
 // View a story (track view)

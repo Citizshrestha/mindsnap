@@ -7,7 +7,7 @@ import ResetPasswordForm from "./components/resetPassword/ResetPasswordForm";
 import UserProfile from "./components/userProfile/UserProfile";
 import Home from "./components/home/Home";
 import AuthenticatedLayout from "./layouts/AuthenticatedLayout";
-import { Provider } from "react-redux";
+import { Provider, useDispatch } from "react-redux";
 import { store } from "./redux/store";
 import "./App.css";
 import { ToastContainer, Slide } from "react-toastify";
@@ -18,11 +18,35 @@ import Explore from "./components/explore/Explore";
 import Connection from "./components/connections/Connection";
 import PendingRequest from "./components/pendingRequest/PendingRequest";
 import {useSocketNotifications} from "./hooks/useSocketNotifications"
-
+import Settings from "./components/setting/Settings";
+import Contacts from "./components/contacts/Contacts";
+import { useEffect } from "react";
+import { clearUserData } from "./redux/slices/userSlice";
+import { clearUser } from "./redux/slices/authSlice";
+import { clearNotifications } from "./redux/slices/notificationSlice";
 
 
 const AppContent: React.FC = () => {
    useSocketNotifications();
+   const dispatch = useDispatch();
+
+   // Initialize authentication state on app load
+   useEffect(() => {
+     const initializeAuth = () => {
+       const token = localStorage.getItem("accessToken");
+       const userId = localStorage.getItem("userId");
+       const username = localStorage.getItem("username");
+       
+       // If no valid authentication data, clear everything
+       if (!token || !userId || !username || username === "Guest") {
+         dispatch(clearUserData());
+         dispatch(clearUser());
+         dispatch(clearNotifications());
+       }
+     };
+
+     initializeAuth();
+   }, [dispatch]);
 
   return (
     <Routes>
@@ -43,6 +67,8 @@ const AppContent: React.FC = () => {
         <Route path="/explore" element={<Explore />} />
         <Route path="/connections" element={<Connection />} />
         <Route path="/follow_request" element={<PendingRequest />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/contacts" element={<Contacts />} />
       </Route>
     </Routes>
   );

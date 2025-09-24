@@ -1,3 +1,6 @@
+// src/services/socketServices.ts
+
+
 import { io, Socket } from "socket.io-client";
 import axios from "axios";
 import { toast } from "react-toastify";
@@ -9,7 +12,7 @@ export interface TargetId {
 
 export interface Notification {
   _id: string;
-  sender: {
+  sender?: { // Make sender optional here too
     _id: string;
     username: string;
     profilePicture: string;
@@ -22,6 +25,7 @@ export interface Notification {
   message: string;
   action?: string;
   isFollowing?: boolean;
+  reactionType?: string;
 }
 
 export interface MessageType {
@@ -34,30 +38,57 @@ export interface MessageType {
   receiver: { _id: string; username?: string };
 }
 
+interface SocketServiceOptions {
+  maxReconnectAttempts?: number;
+  reconnectDelay?: number;
+  reconnectDelayMax?: number;
+  timeout?: number;
+}
+
 class SocketService {
   private socket: Socket | null = null;
   private isConnected: boolean = false;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
+  private reconnectDelay: number = 1000;
+  private reconnectDelayMax: number = 5000;
+  private timeout: number = 20000;
   private userId: string | null = null;
+  private messageQueue: Array<{ receiverId: string; content: string }> = [];
+  private isProcessingQueue: boolean = false;
+
+  constructor(options?: SocketServiceOptions) {
+    if (options) {
+      this.maxReconnectAttempts = options.maxReconnectAttempts || this.maxReconnectAttempts;
+      this.reconnectDelay = options.reconnectDelay || this.reconnectDelay;
+      this.reconnectDelayMax = options.reconnectDelayMax || this.reconnectDelayMax;
+      this.timeout = options.timeout || this.timeout;
+    }
+  }
 
   async connect(token: string, userId: string): Promise<Socket> {
     return new Promise((resolve, reject) => {
       if (this.socket?.connected && this.userId === userId) {
+        console.log('Socket already connected for user:', userId);
         resolve(this.socket);
         return;
       }
 
       console.log("Attempting to connect with token:", token.substring(0, 20) + "...", "userId:", userId);
 
+      // Disconnect existing socket if any
+      if (this.socket) {
+        this.socket.disconnect();
+      }
+
       this.socket = io(import.meta.env.VITE_API_BASE_URL || "http://localhost:5000", {
         auth: { token },
         transports: ["websocket", "polling"],
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
+        reconnectionDelay: this.reconnectDelay,
+        reconnectionDelayMax: this.reconnectDelayMax,
+        timeout: this.timeout,
       });
 
       this.socket.on("connect", () => {
@@ -66,6 +97,10 @@ class SocketService {
         this.reconnectAttempts = 0;
         this.userId = userId;
         this.joinUserRoom(userId);
+
+        // Process any queued messages
+        this.processMessageQueue();
+
         resolve(this.socket!);
       });
 
@@ -115,15 +150,26 @@ class SocketService {
         this.reconnectAttempts = attempt;
         console.log(`🔄 Reconnection attempt ${attempt}/${this.maxReconnectAttempts}`);
       });
+
+      this.socket.on("reconnect_failed", () => {
+        console.error("❌ Reconnection failed after maximum attempts");
+        toast.error("Unable to reconnect to server. Please refresh the page.");
+      });
     });
   }
 
   disconnect(): void {
     if (this.socket) {
+      console.log("🔌 Manually disconnecting socket for user:", this.userId);
+      
+      // Emit a custom logout event before disconnecting
+      this.socket.emit("userLogout", { userId: this.userId });
+      
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
       this.userId = null;
+      this.messageQueue = [];
       console.log("🔌 Socket disconnected at", new Date().toLocaleString());
     }
   }
@@ -147,12 +193,17 @@ class SocketService {
   }
 
   onMessage(callback: (message: MessageType) => void): void {
-    this.socket?.on("newMessage", callback);
+    this.socket?.on("newMessage", (payload: any) => {
+      // Normalize payload shape: backend may emit either the raw message or { success, message, data }
+      const message: any = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
+      console.log('Received new message (normalized):', message);
+      callback(message as MessageType);
+    });
   }
 
-  onTyping(callback: (data: { userId: string; receiverId: string; isTyping: boolean }) => void): void {
-    this.socket?.on("userTyping", callback);
-  }
+onUserTyping(callback: (data: { userId: string; isTyping: boolean }) => void): void {
+  this.socket?.on("userTyping", callback);
+}
 
   onUsersOnline(callback: (users: string[]) => void): void {
     this.socket?.on("usersOnline", callback);
@@ -166,8 +217,12 @@ class SocketService {
     this.socket?.on("newNotification", callback);
   }
 
-  offNotification(callback: (notification: Notification) => void): void {
-    this.socket?.off("newNotification", callback);
+  offNotification(callback?: (notification: Notification) => void): void {
+    if (callback) {
+      this.socket?.off("newNotification", callback);
+    } else {
+      this.socket?.off("newNotification");
+    }
   }
 
   onError(callback: (error: { error: string }) => void): void {
@@ -182,28 +237,132 @@ class SocketService {
     this.socket?.emit("leaveConversation", receiverId);
   }
 
-  sendMessage(messageData: { receiverId: string; content: string }): void {
-    this.socket?.emit("sendMessage", messageData);
+  sendMessage(messageData: { conversationId: string; content: string; receiverId?: string }): void {
+    if (!messageData.conversationId || !messageData.content) {
+      console.error('Invalid message data:', messageData);
+      toast.error('Cannot send message: Missing conversation ID or content');
+      return;
+    }
+
+    if (this.isSocketConnected()) {
+      console.log('Sending message via socket:', messageData);
+      this.socket?.emit('sendMessage', {
+        ...messageData,
+        receiverId: messageData.receiverId || null,
+      });
+    } else {
+      // Queue the message
+      const queuedMessage = {
+        receiverId: messageData.receiverId || messageData.conversationId,
+        content: messageData.content,
+      };
+      this.messageQueue.push(queuedMessage);
+      console.log('Message queued, socket not connected:', queuedMessage);
+
+      // Attempt to reconnect if not already trying
+      if (this.reconnectAttempts === 0) {
+        this.tryReconnect();
+      }
+    }
   }
 
-  startTyping(receiverId: string): void {
-    this.socket?.emit("typingStart", receiverId);
+  async sendMessageWithRetry(
+    messageData: { receiverId: string; content: string },
+    maxRetries = 3
+  ): Promise<void> {
+    let attempts = 0;
+
+    while (attempts < maxRetries) {
+      try {
+        if (this.isSocketConnected()) {
+          this.socket?.emit("sendMessage", messageData);
+          return;
+        } else {
+          await this.reconnect();
+        }
+      } catch (error) {
+        attempts++;
+        console.warn(`Send message attempt ${attempts} failed:`, error);
+
+        if (attempts >= maxRetries) {
+          throw new Error("Failed to send message after multiple attempts");
+        }
+
+        // Exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempts)));
+      }
+    }
   }
 
-  stopTyping(receiverId: string): void {
-    this.socket?.emit("typingStop", receiverId);
+  private async reconnect(): Promise<void> {
+    const token = localStorage.getItem("accessToken");
+    const userId = localStorage.getItem("userId");
+
+    if (token && userId) {
+      try {
+        await this.connect(token, userId);
+      } catch (error) {
+        throw new Error(`Reconnection failed: ${error}`);
+      }
+    } else {
+      throw new Error("Cannot reconnect: Missing authentication data");
+    }
   }
+
+  private async tryReconnect(): Promise<void> {
+    try {
+      await this.reconnect();
+    } catch (error) {
+      console.error("Background reconnection attempt failed:", error);
+    }
+  }
+
+  private processMessageQueue(): void {
+    if (this.isProcessingQueue || this.messageQueue.length === 0) return;
+
+    this.isProcessingQueue = true;
+
+    const processNext = async () => {
+      if (this.messageQueue.length === 0) {
+        this.isProcessingQueue = false;
+        return;
+      }
+
+      const message = this.messageQueue[0];
+
+      try {
+        await this.sendMessageWithRetry(message, 2);
+        this.messageQueue.shift(); // Remove successfully sent message
+        processNext(); // Process next message
+      } catch (error) {
+        console.error("Failed to send queued message:", error);
+        this.isProcessingQueue = false;
+      }
+    };
+
+    processNext();
+  }
+
+startTyping(receiverId: string): void {
+  this.socket?.emit("typingStart", { receiverId, userId: this.userId });
+}
+
+stopTyping(receiverId: string): void {
+  this.socket?.emit("typingStop", { receiverId, userId: this.userId });
+}
 
   markMessageAsSeen(messageId: string, receiverId: string): void {
-    this.socket?.emit("messageSeen", { messageId, receiverId });
+    if (this.isSocketConnected()) {
+      this.socket?.emit("messageSeen", { messageId, receiverId });
+    }
   }
 
-  removeAllListeners(): void 
-  {
+  removeAllListeners(): void {
     this.socket?.removeAllListeners();
   }
 
- // services/socketServices.js - Update sendLikeNotification method
+ 
+
 sendLikeNotification(notificationData: {
   recipientId: string;
   senderId: string;
@@ -211,42 +370,83 @@ sendLikeNotification(notificationData: {
   targetId: string;
   type: string;
   reactionType?: string;
+  message?: string;
 }): void {
-  if (this.socket && this.isConnected) {
-    // Map reaction types to proper display names with proper typing
-    const reactionDisplayNames: Record<string, string> = {
-      like: "liked",
-      love: "loved",
-      haha: "laughed at",
-      wow: "was amazed by",
-      sad: "felt sad about",
-      angry: "got angry at"
-    };
-    
-    const displayReaction = reactionDisplayNames[notificationData.reactionType || 'like'] || 'reacted to';
-    
-    this.socket.emit("sendLikeNotification", {
-      ...notificationData,
-      message: `${notificationData.senderId} ${displayReaction} your ${notificationData.targetType.toLowerCase()}`
-    });
-    console.log("📤 Like notification sent:", notificationData);
-  } else {
-    console.error("❌ Socket not connected, cannot send like notification");
-  }
+  this.sendNotification(notificationData);
 }
-onLikeNotification(callback: (data: {
+
+  sendCommentNotification(notificationData: {
   recipientId: string;
-  sender: string;
+  senderId: string;
   targetType: string;
   targetId: string;
   type: string;
-}) => void): void {
-  this.socket?.on("likeNotification", callback);
+  message?: string;
+}): void {
+  this.sendNotification(notificationData);
 }
 
 
+sendCommentLikeNotification(notificationData: {
+  recipientId: string;
+  senderId: string;
+  targetType: string;
+  targetId: string;
+  type: string;
+  message?: string;
+}): void {
+  this.sendNotification(notificationData);
 }
 
+ // The main sendNotification method that handles everything
+sendNotification(notificationData: {
+  recipientId: string;
+  senderId: string;
+  targetType: string;
+  targetId: string;
+  type: string;
+  reactionType?: string;
+  message?: string;
+}): void {
+  if (this.socket && this.isConnected) {
+    const userState = JSON.parse(localStorage.getItem('userState') || '{}');
+    const currentUser = userState.user || {};
+    
+    this.socket.emit("sendNotification", {
+      ...notificationData,
+      senderUsername: currentUser.username || 'Someone',
+      senderProfilePicture: currentUser.profilePicture || '',
+    });
+  }
+}
+  // Health check method with optional chaining
+  async checkConnection(): Promise<boolean> {
+    if (!this.socket) return false;
+    
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(false), 1000);
+      
+      if (this.socket?.connected) {
+        clearTimeout(timeout);
+        resolve(true);
+      } else {
+        this.socket?.once('connect', () => {
+          clearTimeout(timeout);
+          resolve(true);
+        });
+        
+        this.socket?.once('connect_error', () => {
+          clearTimeout(timeout);
+          resolve(false);
+        });
+      }
+    });
+  }
+}
 
-
-export const socketService = new SocketService();
+export const socketService = new SocketService({
+  maxReconnectAttempts: 10,
+  reconnectDelay: 1000,
+  reconnectDelayMax: 10000,
+  timeout: 30000,
+});

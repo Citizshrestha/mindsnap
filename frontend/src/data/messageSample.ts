@@ -1,4 +1,4 @@
-// Example MessageType
+// data/messageSample.ts - Update your MessageType interface
 export interface Receiver {
   _id: string;
   username?: string;
@@ -11,31 +11,21 @@ export interface Sender {
   profilePicture?: string;
 }
 
-export interface ReplyTo {
-  _id: string;
-  content: string;
-  sender: Sender;
-  messageType: MessageType["messageType"];
-}
-
-export interface Reaction {
-  user: string;
-  reaction: string;
-}
-
 export type MessageType = {
   _id: string;
   content: string;
-  messageType: "text";
+  messageType: "text" | "image" | "video"; // Add image and video types
   createdAt: string;
   status: string;
   sender: Sender;
-  receiver: Receiver; // Added to fix type error
-  replyTo?: string | ReplyTo;
+  receiver: Receiver; 
+  replyTo?: string;
   isPinned?: boolean;
-  reactions?: Reaction[];
+  reactions?: Array<{ user: string; reaction: string }>;
   mediaUrl?: string;
   fileName?: string;
+  isEdited?: boolean;
+  editedAt?: string;
 };
 
 export const messageSample: MessageType[] = [

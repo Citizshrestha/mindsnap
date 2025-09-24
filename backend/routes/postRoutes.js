@@ -1,6 +1,6 @@
 // routes/postRoutes.js
 import express from "express";
-import { createPost, getPosts, commentOnPost, deletePost } from "../controllers/postController.js";
+import { createPost, getPosts, commentOnPost, deletePost, getMyPosts, getUserPosts } from "../controllers/postController.js";
 import protect from "../middleware/authMiddleware.js";
 import multer from "multer";
 import path from "path";
@@ -49,5 +49,7 @@ router.post("/createPost", protect, upload.single('media'), (req, res, next) => 
 router.get("/getPosts", protect, getPosts);
 router.delete("/:id", protect, deletePost);
 router.post("/:postId/comments/:commentId/like", protect, commentOnPost);
+router.get("/profile/posts", protect, getMyPosts);
+router.get("/:userId/posts", protect, getUserPosts);
 
 export default router;

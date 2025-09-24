@@ -103,14 +103,15 @@ export const createPost = asyncHandler(async (req, res) => {
     const hashtagNames = hashtags.map((tag) => tag.replace("#", "").toLowerCase());
     console.log("Found hashtags:", hashtagNames);
 
-    for (const name of hashtagNames) {
-      let hashtag = await Hashtag.findOne({ name });
-      if (!hashtag) {
-        hashtag = await Hashtag.create({ name, posts: [post._id] });
-      } else {
-        hashtag.posts.push(post._id);
-        await hashtag.save();
-      }
+    // Process hashtags - use Set to avoid duplicates in the same post
+    const uniqueHashtagNames = [...new Set(hashtagNames)];
+    
+    for (const name of uniqueHashtagNames) {
+      await Hashtag.findOneAndUpdate(
+        { name },
+        { $addToSet: { posts: post._id } }, // $addToSet only adds if not already present
+        { upsert: true, new: true } // Create if doesn't exist
+      );
     }
 
     const populatedPost = await Post.findById(post._id).populate(
@@ -194,11 +195,24 @@ export const getPosts = asyncHandler(async (req, res) => {
     });
   }
 });
+
 // @route  GET /api/users/profile/posts
 export const getMyPosts = asyncHandler(async (req, res) => {
   try {
-    // Make sure to import the Post model
-    const posts = await Post.find({ user: req.user._id })
+    const { mediaOnly } = req.query;
+    
+    // Build query - only posts by the current user
+    let query = { user: req.user._id };
+    
+    // If mediaOnly is true, only return posts with images or videos
+    if (mediaOnly === 'true') {
+      query.$or = [
+        { image: { $exists: true, $ne: null } },
+        { video: { $exists: true, $ne: null } }
+      ];
+    }
+
+    const posts = await Post.find(query)
       .populate("user", "username profilePicture fullname")
       .sort({ createdAt: -1 });
     
@@ -211,16 +225,16 @@ export const getMyPosts = asyncHandler(async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch your posts",
-      error: error.message // Add error details for debugging
+      error: error.message
     });
   }
 });
-
 // @route  GET /api/users/:userId/posts
 export const getUserPosts = asyncHandler(async (req, res) => {
   try {
     const { userId } = req.params;
-    
+    const { mediaOnly } = req.query;
+
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -235,7 +249,18 @@ export const getUserPosts = asyncHandler(async (req, res) => {
       });
     }
 
-    const posts = await Post.find({ user: userId })
+    // Build query - only posts by this specific user
+    let query = { user: userId };
+    
+    // If mediaOnly is true, only return posts with images or videos
+    if (mediaOnly === 'true') {
+      query.$or = [
+        { image: { $exists: true, $ne: null } },
+        { video: { $exists: true, $ne: null } }
+      ];
+    }
+
+    const posts = await Post.find(query)
       .populate("user", "username profilePicture fullname")
       .populate({
         path: "likes",

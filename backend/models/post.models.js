@@ -22,8 +22,28 @@ const postSchema = new mongoose.Schema (
         ref: 'Like',
       },
     ],
-    comments: [
-      {
+      comments: [
+    {
+      user: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+      },
+      content: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now,
+      },
+      likes: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      }],
+      // Add replies field
+      replies: [{
         user: {
           type: mongoose.Schema.Types.ObjectId,
           ref: 'User',
@@ -38,14 +58,13 @@ const postSchema = new mongoose.Schema (
           type: Date,
           default: Date.now,
         },
-        likes: [
-          {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-          },
-        ],
-      },
-    ],
+        likes: [{
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+        }],
+      }]
+    }
+  ],
 
     shares: {
       type: Number,

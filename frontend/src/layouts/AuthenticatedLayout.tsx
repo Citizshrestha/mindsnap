@@ -4,19 +4,40 @@ import Header from "../components/header/Header";
 import Sidebar from "../components/sidebar/Sidebar";
 import { useSelector } from "react-redux";
 import type { RootState } from "../redux/store";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 const AuthenticatedLayout: React.FC = () => {
   const navigate = useNavigate();
-  const { username } = useSelector((state: RootState) => state.user);
+  const { username, _id } = useSelector((state: RootState) => state.user);
+  const [isChecking, setIsChecking] = useState(true);
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (!token || !username) {
-      navigate("/");
-    }
-  }, [navigate, username]);
+    const checkAuth = () => {
+      const token = localStorage.getItem("accessToken");
+      const userId = localStorage.getItem("userId");
+      
+      // Check if user has valid authentication
+      if (!token || !userId || !_id || username === "Guest") {
+        console.log("Authentication check failed:", { token: !!token, userId: !!userId, _id: !!_id, username });
+        navigate("/", { replace: true });
+        return;
+      }
+      
+      setIsChecking(false);
+    };
+
+    checkAuth();
+  }, [navigate, username, _id]);
+
+  // Show loading or nothing while checking authentication
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

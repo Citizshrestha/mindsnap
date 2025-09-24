@@ -1,9 +1,11 @@
+// controllers/likeController.js
 import { asyncHandler } from "../utils/asyncHandler.js";
-import {Like} from "../models/like.models.js";
-import {Post} from "../models/post.models.js";
-import {Comment} from "../models/comment.models.js";
-import {Story} from "../models/story.models.js";
-import {Notification} from "../models/notification.models.js";
+import { Like } from "../models/like.models.js";
+import { Post } from "../models/post.models.js";
+import { Comment } from "../models/comment.models.js";
+import { Story } from "../models/story.models.js";
+import { Notification } from "../models/notification.models.js";
+// import { User } from "../models/user.models.js";
 
 export const toggleLike = asyncHandler(async (req, res) => {
   const { targetType, targetId } = req.params;
@@ -20,15 +22,15 @@ export const toggleLike = asyncHandler(async (req, res) => {
   let ownerId;
   
   if (targetType === "Post") {
-    target = await Post.findById(targetId).populate("user", "username");
+    target = await Post.findById(targetId).populate("user", "username profilePicture");
     if (!target) throw new Error("Post not found");
     ownerId = target.user._id;
   } else if (targetType === "Comment") {
-    target = await Comment.findById(targetId).populate("user", "username");
+    target = await Comment.findById(targetId).populate("user", "username profilePicture");
     if (!target) throw new Error("Comment not found");
     ownerId = target.user._id;
   } else if (targetType === "Story") {
-    target = await Story.findById(targetId).populate("user", "username");
+    target = await Story.findById(targetId).populate("user", "username profilePicture");
     if (!target) throw new Error("Story not found");
     ownerId = target.user._id;
   } else if (targetType === "EmbeddedComment") {
@@ -95,9 +97,8 @@ export const toggleLike = asyncHandler(async (req, res) => {
     }
     
     // Create notification (skip if user is liking their own content)
-   if (ownerId.toString() !== userId.toString()) {
+if (ownerId.toString() !== userId.toString()) {
   try {
-    // Map reaction types to proper display names
     const reactionDisplayNames = {
       like: "liked",
       love: "loved",
@@ -107,27 +108,51 @@ export const toggleLike = asyncHandler(async (req, res) => {
       angry: "got angry at"
     };
 
+    const displayReaction = reactionDisplayNames[reactionType] || 'reacted to';
+    
+    // Create notification in database
     const notification = await Notification.create({
       recipient: ownerId,
       sender: userId,
       type: "like",
       targetType,
-      targetId: { _id: targetId },
+      targetId: targetId, // Store targetId directly
       read: false,
-      message: `${req.user.username} ${reactionDisplayNames[reactionType] || 'reacted to'} your ${targetType.toLowerCase()}`
+      message: `${req.user.username} ${displayReaction} your ${targetType.toLowerCase()}`,
+      reactionType: reactionType
     });
     
-    // Populate the notification for socket emission
+    // Populate the notification
     const populatedNotification = await Notification.findById(notification._id)
       .populate("sender", "username profilePicture")
       .populate("recipient", "username");
     
+    // Format the notification properly before emitting
+    const formattedNotification = {
+      _id: populatedNotification._id.toString(),
+      sender: {
+        _id: populatedNotification.sender._id.toString(),
+        username: populatedNotification.sender.username,
+        profilePicture: populatedNotification.sender.profilePicture || "/default-avatar.png"
+      },
+      type: populatedNotification.type,
+      targetType: populatedNotification.targetType,
+      targetId: populatedNotification.targetId, // Direct targetId
+      createdAt: populatedNotification.createdAt.toISOString(),
+      read: populatedNotification.read,
+      message: populatedNotification.message,
+      reactionType: populatedNotification.reactionType
+    };
+    
     // Emit socket event for real-time notification
-    req.app.get("io").to(`user_${ownerId}`).emit("newNotification", populatedNotification);
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user_${ownerId}`).emit("newNotification", formattedNotification);
+      console.log(`📩 Like notification sent to user_${ownerId}`);
+    }
     
   } catch (notificationError) {
     console.error("Notification creation error:", notificationError);
-    // Continue even if notification fails
   }
 }
     

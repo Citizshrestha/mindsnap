@@ -24,6 +24,7 @@ import {
   FaReply,
   FaCaretDown,
   FaCaretUp,
+  FaTrash,
 } from "react-icons/fa";
 import { BiSolidLike } from "react-icons/bi";
 import { useDispatch, useSelector } from "react-redux";
@@ -117,25 +118,25 @@ const itemVariants = {
     opacity: 1,
     y: 0,
     transition: {
-      type: "spring",
+      type: "spring" as const,
       stiffness: 100,
       damping: 12
     }
   }
 };
 
-const scaleVariants = {
-  hidden: { opacity: 0, scale: 0.8 },
-  visible: {
-    opacity: 1,
-    scale: 1,
-    transition: {
-      type: "spring",
-      stiffness: 200,
-      damping: 15
-    }
-  }
-};
+// const scaleVariants = {
+//   hidden: { opacity: 0, scale: 0.8 },
+//   visible: {
+//     opacity: 1,
+//     scale: 1,
+//     transition: {
+//       type: "spring",
+//       stiffness: 200,
+//       damping: 15
+//     }
+//   }
+// };
 
 const slideInVariants = {
   hidden: { opacity: 0, x: -20 },
@@ -143,36 +144,36 @@ const slideInVariants = {
     opacity: 1,
     x: 0,
     transition: {
-      type: "spring",
+      type: "spring" as const,
       stiffness: 150,
       damping: 15
     }
   }
 };
 
-const fadeInVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      duration: 0.3,
-      ease: "easeOut"
-    }
-  }
-};
+// const fadeInVariants = {
+//   hidden: { opacity: 0 },
+//   visible: {
+//     opacity: 1,
+//     transition: {
+//       duration: 0.3,
+//       ease: "easeOut"
+//     }
+//   }
+// };
 
-const hoverScale = {
-  scale: 1.02,
-  transition: {
-    type: "spring",
-    stiffness: 300,
-    damping: 15
-  }
-};
+// const hoverScale = {
+//   scale: 1.02,
+//   transition: {
+//     type: "spring",
+//     stiffness: 300,
+//     damping: 15
+//   }
+// };
 
-const tapScale = {
-  scale: 0.98
-};
+// const tapScale = {
+//   scale: 0.98
+// };
 
 const Home = () => {
   const dispatch = useDispatch();
@@ -338,175 +339,188 @@ const Home = () => {
     }));
   };
 
-  const handleSubmitComment = async (postId: string) => {
-    try {
-      console.log("=== SUBMITTING COMMENT DEBUG ===");
-      console.log("Post ID:", postId);
-      console.log("Comment content:", commentStates[postId]?.content);
+const handleSubmitComment = async (postId: string) => {
+  try {
+    console.log("=== SUBMITTING COMMENT DEBUG ===");
+    console.log("Post ID:", postId);
+    console.log("Comment content:", commentStates[postId]?.content);
 
-      setCommentStates((prev) => ({
-        ...prev,
-        [postId]: {
-          ...prev[postId],
-          isSubmitting: true,
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        isSubmitting: true,
+      },
+    }));
+
+    const response = await axiosClient.post(
+      `/api/comments/posts/${postId}/comments`,
+      { content: commentStates[postId]?.content },
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
-      }));
+      }
+    );
 
-      const response = await axiosClient.post(
-        `/api/comments/posts/${postId}/comments`,
-        { content: commentStates[postId]?.content },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
-        }
-      );
+    console.log("Comment response:", response.data);
 
-      console.log("Comment response:", response.data);
-
-      if (response.data) {
-        // Update the post's comment count
-        setPosts((prevPosts) => {
-          const updatedPosts = prevPosts.map((post) => {
-            if (post.id === postId) {
-              const newCommentCount = post.comments + 1;
-              console.log(
-                `Updating post ${postId} comments from ${post.comments} to ${newCommentCount}`
-              );
-              return { ...post, comments: newCommentCount };
-            }
-            return post;
-          });
-
-          console.log("Updated posts with new comment count:", updatedPosts);
-          return updatedPosts;
+    if (response.data) {
+      setPosts((prevPosts) => {
+        const updatedPosts = prevPosts.map((post) => {
+          if (post.id === postId) {
+            const newCommentCount = post.comments + 1;
+            console.log(`Updating post ${postId} comments from ${post.comments} to ${newCommentCount}`);
+            return { ...post, comments: newCommentCount };
+          }
+          return post;
         });
+        return updatedPosts;
+      });
 
-        // Add the new comment to the state
-        setCommentStates((prev) => ({
-          ...prev,
-          [postId]: {
-            ...prev[postId],
-            content: "",
-            showInput: false,
-            showCommentEmojiPicker: false,
-            comments: [
-              { ...response.data, likes: [], replies: [], replyCount: 0 },
-              ...(prev[postId]?.comments || []),
-            ],
-            isSubmitting: false,
-          },
-        }));
-
-        // Send comment notification
-        const post = posts.find((p) => p.id === postId);
-        if (post && post.userId !== currentUserId) {
-          const userState = {
-            user: {
-              username: fullname || "User",
-              profilePicture: profilePicture || "",
-              _id: currentUserId,
-            },
-          };
-          localStorage.setItem("userState", JSON.stringify(userState));
-
-          socketService.sendCommentNotification({
-            recipientId: post.userId,
-            senderId: currentUserId,
-            targetType: "Post",
-            targetId: postId,
-            type: "comment",
-          });
-        }
-
-        toast.success("Comment added successfully!");
-      }
-    } catch (error: any) {
-      console.error("Error adding comment:", error);
-      if (error.response) {
-        console.error("Error response data:", error.response.data);
-        console.error("Error response status:", error.response.status);
-        toast.error(error.response.data.message || "Failed to add comment");
-      } else if (error.request) {
-        console.error("Error request:", error.request);
-        toast.error("Network error. Please check your connection.");
-      } else {
-        console.error("Error message:", error.message);
-        toast.error("Failed to add comment");
-      }
-
+      // Add the new comment to the state
       setCommentStates((prev) => ({
         ...prev,
         [postId]: {
           ...prev[postId],
+          content: "",
+          showInput: false,
+          showCommentEmojiPicker: false,
+          comments: [
+            { ...response.data, likes: [], replies: [], replyCount: 0 },
+            ...(prev[postId]?.comments || []),
+          ],
           isSubmitting: false,
         },
       }));
+
+      // Send comment notification with proper message
+      const post = posts.find((p) => p.id === postId);
+      if (post && post.userId !== currentUserId) {
+        const userState = {
+          user: {
+            username: fullname || "User",
+            profilePicture: profilePicture || "",
+            _id: currentUserId,
+          },
+        };
+        localStorage.setItem("userState", JSON.stringify(userState));
+
+        // FIX: Use the correct notification function with proper message
+        socketService.sendCommentNotification({
+          recipientId: post.userId,
+          senderId: currentUserId,
+          targetType: "Post",
+          targetId: postId,
+          type: "comment",
+          message: `${fullname || 'Someone'} commented on your post: "${commentStates[postId]?.content?.substring(0, 50)}${commentStates[postId]?.content && commentStates[postId].content.length > 50 ? '...' : ''}"`
+        });
+      }
+
+      toast.success("Comment added successfully!");
     }
-  };
+  } catch (error: unknown) { 
+    console.error("Error adding comment:", error);
+    if (error && typeof error === 'object' && 'response' in error) {
+      const axiosError = error as { response?: { data?: { message?: string }; status?: number } };
+      console.error("Error response data:", axiosError.response?.data);
+      console.error("Error response status:", axiosError.response?.status);
+      toast.error(axiosError.response?.data?.message || "Failed to add comment");
+    } else if (error && typeof error === 'object' && 'request' in error) {
+      console.error("Error request:", error);
+      toast.error("Network error. Please check your connection.");
+    } else {
+      console.error("Error message:", error);
+      toast.error("Failed to add comment");
+    }
+
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        isSubmitting: false,
+      },
+    }));
+  }
+};
 
   // For adding a reply
-  const handleSubmitReply = async (postId: string, commentId: string) => {
-    try {
-      const replyContent = commentStates[postId]?.replyContent;
-      if (!replyContent?.trim()) return;
+const handleSubmitReply = async (postId: string, commentId: string) => {
+  try {
+    const replyContent = commentStates[postId]?.replyContent;
+    if (!replyContent?.trim()) return;
 
-      setCommentStates((prev) => ({
-        ...prev,
-        [postId]: {
-          ...prev[postId],
-          isSubmitting: true,
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        isSubmitting: true,
+      },
+    }));
+
+    const response = await axiosClient.post(
+      `/api/comments/posts/${postId}/comments/${commentId}/replies`,
+      { content: replyContent },
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
-      }));
+      }
+    );
 
-      // Use the correct endpoint
-      const response = await axiosClient.post(
-        `/api/comments/posts/${postId}/comments/${commentId}/replies`,
-        { content: replyContent },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
-        }
+    if (response.data) {
+      // FIX: Update the post's comment count BEFORE updating the comment state
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            return { ...post, comments: post.comments + 1 };
+          }
+          return post;
+        })
       );
 
-      if (response.data) {
-        // Update the comment with the new reply
-        setCommentStates((prev) => ({
-          ...prev,
-          [postId]: {
-            ...prev[postId],
-            replyContent: "",
-            replyingTo: null,
-            showReplyEmojiPicker: null,
-            comments: prev[postId]?.comments.map((comment) => {
-              if (comment._id === commentId) {
-                return {
-                  ...comment,
-                  replies: [...(comment.replies || []), response.data],
-                  replyCount: (comment.replyCount || 0) + 1,
-                };
-              }
-              return comment;
-            }),
-            isSubmitting: false,
-          },
-        }));
-
-        toast.success("Reply added successfully!");
-      }
-    } catch (error: any) {
-      console.error("Error adding reply:", error);
-      toast.error(error.response?.data?.message || "Failed to add reply");
+      // FIX: Update the comment with the new reply and ensure replyCount is accurate
       setCommentStates((prev) => ({
         ...prev,
         [postId]: {
           ...prev[postId],
+          replyContent: "",
+          replyingTo: null,
+          showReplyEmojiPicker: null,
+          comments: prev[postId]?.comments.map((comment) => {
+            if (comment._id === commentId) {
+              const updatedReplies = [...(comment.replies || []), response.data];
+              return {
+                ...comment,
+                replies: updatedReplies,
+                replyCount: updatedReplies.length, // Ensure replyCount matches actual replies
+              };
+            }
+            return comment;
+          }),
           isSubmitting: false,
         },
       }));
+
+      toast.success("Reply added successfully!");
     }
-  };
+  } catch (error: unknown) {
+    console.error("Error adding reply:", error);
+    if (error && typeof error === 'object' && 'response' in error) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError.response?.data?.message || "Failed to add reply");
+    } else {
+      toast.error("Failed to add reply");
+    }
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...prev[postId],
+        isSubmitting: false,
+      },
+    }));
+  }
+};
 
   // For getting replies
   const fetchReplies = async (postId: string, commentId: string) => {
@@ -546,44 +560,45 @@ const Home = () => {
     }
   };
 
-  const fetchComments = async (postId: string) => {
-    try {
-      const response = await axiosClient.get(
-        `/api/comments/posts/${postId}/comments`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
-        }
-      );
-
-      setCommentStates((prev) => ({
-        ...prev,
-        [postId]: {
-          ...(prev[postId] || {
-            content: "",
-            showInput: false,
-            isSubmitting: false,
-            showCommentEmojiPicker: false,
-            replyingTo: null,
-            replyContent: "",
-            showReplyEmojiPicker: null,
-            expandedReplies: {},
-          }),
-          comments: response.data.map((comment: Comment) => ({
-            ...comment,
-            replies: comment.replies || [],
-            replyCount: comment.replyCount || 0,
-          })),
+ const fetchComments = async (postId: string) => {
+  try {
+    const response = await axiosClient.get(
+      `/api/comments/posts/${postId}/comments`,
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
         },
-      }));
+      }
+    );
 
-      setExpandedComments((prev) => ({ ...prev, [postId]: true }));
-    } catch (error) {
-      console.error("Error fetching comments:", error);
-      toast.error("Failed to load comments");
-    }
-  };
+    setCommentStates((prev) => ({
+      ...prev,
+      [postId]: {
+        ...(prev[postId] || {
+          content: "",
+          showInput: false,
+          isSubmitting: false,
+          showCommentEmojiPicker: false,
+          replyingTo: null,
+          replyContent: "",
+          showReplyEmojiPicker: null,
+          expandedReplies: {},
+        }),
+        comments: response.data.map((comment: Comment) => ({
+          ...comment,
+          replies: comment.replies || [],
+          // FIX: Ensure replyCount is properly set
+          replyCount: comment.replies ? comment.replies.length : (comment.replyCount || 0),
+        })),
+      },
+    }));
+
+    setExpandedComments((prev) => ({ ...prev, [postId]: true }));
+  } catch (error) {
+    console.error("Error fetching comments:", error);
+    toast.error("Failed to load comments");
+  }
+};
 
   const toggleComments = (postId: string) => {
     if (!expandedComments[postId]) {
@@ -652,7 +667,7 @@ const Home = () => {
     }));
   };
 
-  const handleReplyEmojiSelect = (emoji: Emoji, postId: string) => {
+  const handleReplyEmojiSelect = (emoji: Emoji, postId: string, ) => {
     setCommentStates((prev) => ({
       ...prev,
       [postId]: {
@@ -725,89 +740,105 @@ const Home = () => {
     fetchProfile();
   }, [dispatch]);
 
-  useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        const res = await axiosClient.get("/api/posts/getPosts", {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
-        });
+useEffect(() => {
+  const fetchPosts = async () => {
+    try {
+      const res = await axiosClient.get("/api/posts/getPosts", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        },
+      });
 
-        console.log("=== FETCHED POSTS DEBUG ===");
-        console.log("Raw response data:", res.data);
+      console.log("=== FETCHED POSTS DEBUG ===");
+      console.log("Raw response data:", res.data);
 
-        const formattedPosts: Post[] = res.data.map((post: any) => {
-          // Debug the post object to see what's coming from backend
-          console.log("Post from backend:", post);
-          console.log(
-            "Comments:",
-            post.comments,
-            "Type:",
-            typeof post.comments
-          );
-
-          // FIX: Handle both array and number types for comments
-          let commentCount = 0;
-          if (typeof post.comments === "number") {
-            commentCount = post.comments;
-          } else if (Array.isArray(post.comments)) {
-            commentCount = post.comments.length;
-          }
-
-          const formattedPost = {
-            id: post._id,
-            caption: post.content,
-            media: post.image
-              ? {
-                  type: post.image.includes("/video/")
-                    ? ("video" as const)
-                    : ("image" as const),
-                  url: post.image,
-                  name: post.image.split("/").pop(),
-                }
-              : null,
-            likes: post.likes || 0,
-            comments: commentCount, // Use the correct comment count
-            shares: post.shares || 0,
-            time: formatTime(post.createdAt),
-            profilePicture: post.user?.profilePicture || DefaultAvatar,
-            username: post.user?.username
-              ? `@${post.user.username}`
-              : "@UnknownUser",
-            name: post.user?.fullname || "Unknown User",
-            userId: post.user?._id || "",
-            userReaction: post.userReaction || null,
-            reactionCounts: post.reactionCounts || {}, // Add reaction counts
+      const formattedPosts: Post[] = res.data.map((post: unknown) => {
+        const postData = post as {
+          _id: string;
+          content: string;
+          image?: string;
+          likes: number;
+          comments: unknown;
+          shares: number;
+          createdAt: string;
+          user?: {
+            profilePicture?: string;
+            username?: string;
+            fullname?: string;
+            _id: string;
           };
-
-          console.log("Formatted post comment count:", formattedPost.comments);
-          console.log("User reaction:", formattedPost.userReaction);
-          console.log("Reaction counts:", formattedPost.reactionCounts);
-          return formattedPost;
-        });
-
-        console.log("All formatted posts:", formattedPosts);
-        console.log("Current user ID from Redux:", currentUserId);
-        console.log("===========================");
-
-        setPosts(formattedPosts);
-      } catch (err: unknown) {
-        const error = err as {
-          message?: string;
-          response?: { status?: number; data?: { message?: string } };
+          userReaction?: string;
+          reactionCounts?: { [key: string]: number };
         };
-        console.error("Fetch Posts error: ", {
-          message: error.message,
-          status: error.response?.status,
-          data: error.response?.data,
-        });
-        toast.error(error.response?.data?.message || "Failed to load posts");
-      }
-    };
+        
+        console.log("Post from backend:", postData);
 
-    fetchPosts();
-  }, [currentUserId]);
+        let totalCommentCount = 0;
+        
+        if (typeof postData.comments === "number") {
+          totalCommentCount = postData.comments;
+        } else if (Array.isArray(postData.comments)) {
+          totalCommentCount = postData.comments.reduce((total: number, comment: unknown) => {
+            const commentData = comment as { replies?: unknown[] };
+            let count = 1;
+            
+            if (commentData.replies && Array.isArray(commentData.replies)) {
+              count += commentData.replies.length;
+            }
+            
+            return total + count;
+          }, 0);
+        }
+
+        const formattedPost: Post = {
+          id: postData._id,
+          caption: postData.content,
+          media: postData.image
+            ? {
+                type: postData.image.includes("/video/")
+                  ? "video" as const
+                  : "image" as const,
+                url: postData.image,
+                name: postData.image.split("/").pop(),
+              }
+            : null,
+          likes: postData.likes || 0,
+          comments: totalCommentCount,
+          shares: postData.shares || 0,
+          time: formatTime(postData.createdAt),
+          profilePicture: postData.user?.profilePicture || DefaultAvatar,
+          username: postData.user?.username
+            ? `@${postData.user.username}`
+            : "@UnknownUser",
+          name: postData.user?.fullname || "Unknown User",
+          userId: postData.user?._id || "",
+          userReaction: postData.userReaction || null,
+          reactionCounts: postData.reactionCounts || {},
+        };
+
+        console.log("Formatted post comment count:", formattedPost.comments);
+        console.log("Total comments including replies:", totalCommentCount);
+        return formattedPost;
+      });
+
+      console.log("All formatted posts:", formattedPosts);
+      setPosts(formattedPosts);
+    } catch (err: unknown) {
+      const error = err as {
+        message?: string;
+        response?: { status?: number; data?: { message?: string } };
+      };
+      console.error("Fetch Posts error: ", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      toast.error(error.response?.data?.message || "Failed to load posts");
+    }
+  };
+
+  fetchPosts();
+}, [currentUserId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -990,87 +1021,137 @@ const Home = () => {
       setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
-  const handleReaction = async (
-    postId: string,
-    reactionType: string = "like"
-  ) => {
-    try {
-      const response = await axiosClient.post(
-        `/api/likes/toggle/Post/${postId}`,
-        { reactionType },
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-          },
-        }
-      );
+const handleReaction = async (
+  postId: string,
+  reactionType: string = "like"
+) => {
+  try {
+    const response = await axiosClient.post(
+      `/api/likes/toggle/Post/${postId}`,
+      { reactionType },
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        },
+      }
+    );
 
-      setPosts((prevPosts) =>
-        prevPosts.map((post) => {
-          if (post.id === postId) {
-            const updatedPost = {
-              ...post,
-              userReaction: response.data.liked ? reactionType : null,
-            };
+    // Define isRemovingReaction here so it's accessible throughout the function
+    let isRemovingReaction = false;
 
-            // Update reaction counts
-            if (response.data.liked) {
-              updatedPost.likes = post.likes + 1;
+    setPosts((prevPosts) =>
+      prevPosts.map((post) => {
+        if (post.id === postId) {
+          const currentReaction = post.userReaction;
+          const isSameReaction = currentReaction === reactionType;
+          isRemovingReaction = isSameReaction && !response.data.liked;
+          const isChangingReaction = currentReaction && currentReaction !== reactionType;
+
+          const updatedPost = { ...post };
+
+          if (isRemovingReaction) {
+            // Removing reaction
+            updatedPost.userReaction = null;
+            updatedPost.likes = Math.max(0, post.likes - 1);
+            if (post.reactionCounts?.[reactionType]) {
               updatedPost.reactionCounts = {
                 ...post.reactionCounts,
-                [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1
+                [reactionType]: Math.max(0, (post.reactionCounts[reactionType] || 0) - 1)
               };
-            } else {
-              updatedPost.likes = Math.max(0, post.likes - 1);
-              if (post.reactionCounts?.[reactionType]) {
-                updatedPost.reactionCounts = {
-                  ...post.reactionCounts,
-                  [reactionType]: Math.max(0, (post.reactionCounts[reactionType] || 0) - 1)
-                };
-              }
             }
-
-            return updatedPost;
+          } else if (isChangingReaction) {
+            // Changing reaction type
+            const oldReactionType = currentReaction!;
+            updatedPost.userReaction = reactionType;
+            
+            // Decrease old reaction count
+            if (post.reactionCounts?.[oldReactionType]) {
+              updatedPost.reactionCounts = {
+                ...post.reactionCounts,
+                [oldReactionType]: Math.max(0, (post.reactionCounts[oldReactionType] || 0) - 1)
+              };
+            }
+            
+            // Increase new reaction count
+            updatedPost.reactionCounts = {
+              ...updatedPost.reactionCounts!,
+              [reactionType]: (updatedPost.reactionCounts?.[reactionType] || 0) + 1
+            };
+          } else if (response.data.liked) {
+            // Adding new reaction
+            updatedPost.userReaction = reactionType;
+            updatedPost.likes = post.likes + 1;
+            updatedPost.reactionCounts = {
+              ...post.reactionCounts,
+              [reactionType]: (post.reactionCounts?.[reactionType] || 0) + 1
+            };
           }
-          return post;
-        })
-      );
 
-      if (response.data.liked) {
-        const likedPost = posts.find((post) => post.id === postId);
-        if (likedPost && likedPost.userId !== currentUserId) {
-          // Save user state to localStorage for socket service to access
-          const userState = {
-            user: {
-              username: fullname || 'User',
-              profilePicture: profilePicture || '',
-              _id: currentUserId
-            }
-          };
-          localStorage.setItem('userState', JSON.stringify(userState));
-          
-          // Send like notification via socket
-          socketService.sendLikeNotification({
-            recipientId: likedPost.userId,
-            senderId: currentUserId,
-            targetType: "Post",
-            targetId: postId,
-            type: "like",
-            reactionType: reactionType,
-          });
+          return updatedPost;
         }
+        return post;
+      })
+    );
+
+    // Fix: Check if the reaction was successful before showing success message
+    if (response.data && response.data.message) {
+      if (response.data.message.includes("successfully") || response.data.liked !== undefined) {
+        toast.success(response.data.message || "Reaction added successfully!");
       }
-      toast.success(response.data.message);
-    } catch (err: unknown) {
-      const error = err as {
-        message?: string;
-        response?: { data?: { message?: string } };
-      };
-      console.error("Reaction error:", error);
-      toast.error(error.response?.data?.message || "Failed to add reaction");
     }
-    setShowReactionOptions((prev) => ({ ...prev, [postId]: false }));
+
+    // Now isRemovingReaction is accessible here
+    if (response.data.liked && !isRemovingReaction) {
+      const likedPost = posts.find((post) => post.id === postId);
+      if (likedPost && likedPost.userId !== currentUserId) {
+        const userState = {
+          user: {
+            username: fullname || 'User',
+            profilePicture: profilePicture || '',
+            _id: currentUserId
+          }
+        };
+        localStorage.setItem('userState', JSON.stringify(userState));
+        
+        // FIX: Use the correct notification function with proper message
+        socketService.sendLikeNotification({
+          recipientId: likedPost.userId,
+          senderId: currentUserId,
+          targetType: "Post",
+          targetId: postId,
+          type: "like",
+          reactionType: reactionType,
+          message: `${fullname || 'Someone'} ${getReactionVerb(reactionType)} your post` // Add proper message
+        });
+      }
+    }
+  } catch (err: unknown) {
+    const error = err as {
+      message?: string;
+      response?: { data?: { message?: string } };
+    };
+    console.error("Reaction error:", error);
+    if (error.response?.data?.message && !error.response.data.message.includes("successfully")) {
+      toast.error(error.response.data.message);
+    } else {
+      toast.error("Failed to add reaction");
+    }
+  }
+  setShowReactionOptions((prev) => ({ ...prev, [postId]: false }));
+};
+
+// Add helper function for reaction verbs
+const getReactionVerb = (reactionType: string): string => {
+  const reactionVerbs: { [key: string]: string } = {
+    like: "liked",
+    love: "loved", 
+    haha: "laughed at",
+    wow: "was amazed by",
+    sad: "felt sad about",
+    angry: "got angry at"
   };
+  return reactionVerbs[reactionType] || "reacted to";
+};
 
   const toggleOptionsMenu = (postId: string) => {
     setShowOptionsMenu(showOptionsMenu === postId ? null : postId);
@@ -1171,39 +1252,35 @@ const Home = () => {
 
         toast.success("Comment deleted successfully!");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting comment:", error);
-      toast.error(error.response?.data?.message || "Failed to delete comment");
+      toast.error( "Failed to delete comment");
     }
   };
 
   const handleDeleteReply = async (postId: string, commentId: string, replyId: string) => {
     try {
-      const postResponse = await axiosClient.get(`/api/posts/${postId}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
-        },
-      });
+      const response = await axiosClient.delete(
+        `/api/comments/posts/${postId}/comments/${commentId}/replies/${replyId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+          },
+        }
+      );
 
-      const post = postResponse.data;
-      const comment = post.comments.find((c: any) => c._id === commentId);
-      
-      if (comment) {
-        // Update the comment to remove the reply
-        const updatedComment = {
-          ...comment,
-          replies: comment.replies.filter((reply: any) => reply._id !== replyId),
-        };
-
+      if (response.data.success) {
+        // Remove the reply from the frontend state
         setCommentStates((prev) => ({
           ...prev,
           [postId]: {
             ...prev[postId],
             comments: prev[postId]?.comments.map((comment) => {
               if (comment._id === commentId) {
+                const updatedReplies = comment.replies?.filter((reply) => reply._id !== replyId) || [];
                 return {
                   ...comment,
-                  replies: comment.replies?.filter((reply) => reply._id !== replyId) || [],
+                  replies: updatedReplies,
                   replyCount: Math.max(0, (comment.replyCount || 0) - 1),
                 };
               }
@@ -1214,9 +1291,9 @@ const Home = () => {
 
         toast.success("Reply deleted successfully!");
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error deleting reply:", error);
-      toast.error("Failed to delete reply");
+      toast.error( "Failed to delete reply");
     }
   };
 
@@ -1399,7 +1476,7 @@ const Home = () => {
               {posts.map((post, index) => (
                 <motion.div
                   key={post.id}
-                  className="bg-white shadow-md rounded-2xl p-6 relative"
+                  className="bg-white shadow-md mt-3 rounded-2xl p-6 relative"
                   variants={itemVariants}
                   initial="hidden"
                   animate="visible"
@@ -1441,7 +1518,7 @@ const Home = () => {
                         {showOptionsMenu === post.id && (
                           <motion.div
                             ref={optionsMenuRef}
-                            className="absolute right-0 top-10 bg-white shadow-lg rounded-lg p-2 w-48 z-10 border border-gray-200"
+                            className="absolute right-0 top-4  bg-white shadow-lg rounded-lg p-2 w-48 z-50 border border-gray-200"
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
@@ -1803,7 +1880,7 @@ const Home = () => {
 
                         {/* Comments list */}
                         <motion.div 
-                          className="space-y-4 max-h-96 overflow-y-auto"
+                          className="space-y-4 max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent"
                           layout
                         >
                           {commentStates[post.id]?.comments?.map((comment, index) => (
@@ -1844,8 +1921,20 @@ const Home = () => {
                                         })}
                                       </span>
                                     </div>
+                                    {/* Delete button for comment owner */}
+                                    {comment.user._id === currentUserId && (
+                                      <motion.button
+                                        onClick={() => handleDeleteComment(post.id, comment._id)}
+                                        className="text-red-500 hover:text-red-700 text-xs p-1"
+                                        whileHover={{ scale: 1.1 }}
+                                        whileTap={{ scale: 0.9 }}
+                                        title="Delete comment"
+                                      >
+                                        <FaTrash size={12} />
+                                      </motion.button>
+                                    )}
                                   </div>
-                                  <p className="text-sm text-gray-800 mb-2">
+                                  <p className="text-sm text-left text-gray-800 mb-2">
                                     {comment.content}
                                   </p>
                                   <div className="flex items-center gap-4 mt-2">
@@ -1873,26 +1962,26 @@ const Home = () => {
                                       <FaReply size={12} />
                                       <span>Reply</span>
                                     </motion.button>
-                                    {comment.replyCount > 0 && (
-                                      <motion.button
-                                        onClick={() => toggleReplies(post.id, comment._id)}
-                                        className="flex items-center gap-1 text-xs text-[#611DD0] hover:underline"
-                                        whileHover={{ scale: 1.05 }}
-                                        whileTap={{ scale: 0.95 }}
-                                      >
-                                        {commentStates[post.id]?.expandedReplies[comment._id] ? (
-                                          <>
-                                            <FaCaretUp size={12} />
-                                            <span>Hide {comment.replyCount} replies</span>
-                                          </>
-                                        ) : (
-                                          <>
-                                            <FaCaretDown size={12} />
-                                            <span>View {comment.replyCount} replies</span>
-                                          </>
-                                        )}
-                                      </motion.button>
-                                    )}
+{((comment.replyCount && comment.replyCount > 0) || (comment.replies && comment.replies.length > 0)) && (
+  <motion.button
+    onClick={() => toggleReplies(post.id, comment._id)}
+    className="flex items-center gap-1 text-xs text-[#611DD0] hover:underline"
+    whileHover={{ scale: 1.05 }}
+    whileTap={{ scale: 0.95 }}
+  >
+    {commentStates[post.id]?.expandedReplies[comment._id] ? (
+      <>
+        <FaCaretUp size={12} />
+        <span>Hide {comment.replyCount || comment.replies?.length || 0} replies</span>
+      </>
+    ) : (
+      <>
+        <FaCaretDown size={12} />
+        <span>View {comment.replyCount || comment.replies?.length || 0} replies</span>
+      </>
+    )}
+  </motion.button>
+)}
                                   </div>
                                 </motion.div>
                               </div>
@@ -1983,7 +2072,7 @@ const Home = () => {
                                             <Picker
                                               data={data}
                                               onEmojiSelect={(emoji: Emoji) =>
-                                                handleReplyEmojiSelect(emoji, post.id, comment._id)
+                                                handleReplyEmojiSelect(emoji, post.id)
                                               }
                                               theme="light"
                                               previewPosition="none"
@@ -2044,8 +2133,20 @@ const Home = () => {
                                                 })}
                                               </span>
                                             </div>
+                                            {/* Delete button for reply owner */}
+                                            {reply.user._id === currentUserId && (
+                                              <motion.button
+                                                onClick={() => handleDeleteReply(post.id, comment._id, reply._id)}
+                                                className="text-red-500 hover:text-red-700 text-xs p-1"
+                                                whileHover={{ scale: 1.1 }}
+                                                whileTap={{ scale: 0.9 }}
+                                                title="Delete reply"
+                                              >
+                                                <FaTrash size={10} />
+                                              </motion.button>
+                                            )}
                                           </div>
-                                          <p className="text-xs text-gray-800">
+                                          <p className="text-xs text-left text-gray-800">
                                             {reply.content}
                                           </p>
                                           <div className="flex items-center gap-3 mt-1">
@@ -2117,7 +2218,7 @@ const Home = () => {
       <AnimatePresence>
         {showDeleteConfirm && (
           <motion.div 
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+            className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -2173,3 +2274,5 @@ const Home = () => {
 };
 
 export default Home;
+
+

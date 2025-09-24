@@ -1,12 +1,15 @@
 import { useState } from "react";
-import axiosClient from "../../api/axiosClient";
 import { isAxiosError, AxiosError } from "axios";
 import { toast } from "react-toastify";
 import { FaWindowClose, FaCamera, FaPlay } from "react-icons/fa";
 
 interface CreateStoryProps {
   onClose: () => void;
-  onSave: (story: { caption: string; mediaUrl?: string; userId: string }) => void;
+  onSave: (story: {
+    caption: string;
+    mediaUrl?: string;
+    userId: string;
+  }) => void;
   userId: string;
 }
 
@@ -28,11 +31,16 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
     }
 
     if (media) {
-      if (!/(image\/(jpg|jpeg|png|gif|webp))|(video\/(mp4|mov))/.test(media.type)) {
-        toast.error("Please upload a supported image (jpg, jpeg, png, gif) or video (mp4, mov) file.");
+      if (
+        !/(image\/(jpg|jpeg|png|gif|webp))|(video\/(mp4|mov))/.test(media.type)
+      ) {
+        toast.error(
+          "Please upload a supported image (jpg, jpeg, png, gif) or video (mp4, mov) file."
+        );
         return;
       }
-      if (media.size > 10 * 1024 * 1024) { // 10MB limit
+      if (media.size > 10 * 1024 * 1024) {
+        // 10MB limit
         toast.error("File size must not exceed 10MB.");
         return;
       }
@@ -55,45 +63,42 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
       setLoading(true);
       const content: Content = { url: "", mediaType: "text" };
 
+      // Replace the Cloudinary upload section with this:
       if (media) {
         console.log("Uploading media to Cloudinary...");
         const formData = new FormData();
         formData.append("file", media);
-        formData.append("upload_preset", import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "");
-        formData.append("folder", "mindsnap/stories");
-
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/auto/upload`,
-          { method: "POST", body: formData }
+        formData.append(
+          "upload_preset",
+          import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || ""
         );
+        formData.append("folder", "mindsnap/stories/${username}"); // saved with their respective username fetch it from userSlice
+
+        // Remove any auto/ transformation that might be causing issues
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${
+          import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+        }/upload`; 
+
+        const res = await fetch(uploadUrl, { method: "POST", body: formData });
         const data = await res.json();
         console.log("Cloudinary response:", data);
+
         if (!res.ok) {
-          throw new Error(`Cloudinary upload failed: ${data.error?.message || "Unknown error"}`);
+          throw new Error(
+            `Cloudinary upload failed: ${
+              data.error?.message || "Unknown error"
+            }`
+          );
         }
+
         content.url = data.secure_url;
         content.mediaType = media.type.startsWith("video") ? "video" : "image";
         console.log("Media uploaded successfully:", content);
       }
 
-      console.log("Sending story data to API:", { caption, content, user: userId });
-      const response = await axiosClient.post("/api/stories", {
-        caption,
-        content: content.url ? content : { url: "", mediaType: "text" },
-        user: userId,
-      }, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      console.log("API response (full):", response.data);
-      if (!response.data || typeof response.data !== "object" || !response.data.success) {
-        throw new Error(`Database error: ${response.data?.message || "Failed to save story"}`);
-      }
+  
 
       onSave({ caption, mediaUrl: content.url || "", userId });
-      toast.success("Story created successfully!");
       onClose();
     } catch (err: unknown) {
       let errorMessage = "Failed to create story";
@@ -106,7 +111,10 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
         responseData = axiosErr.response?.data;
         status = axiosErr.response?.status;
         requestUrl = axiosErr.config?.url;
-        errorMessage = (axiosErr.response?.data as { message?: string })?.message || axiosErr.message || errorMessage;
+        errorMessage =
+          (axiosErr.response?.data as { message?: string })?.message ||
+          axiosErr.message ||
+          errorMessage;
       } else if (err instanceof Error) {
         errorMessage = err.message;
       } else if (typeof err === "string") {
@@ -140,9 +148,14 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
           <FaWindowClose size={25} />
         </button>
 
-        <h2 className="text-center text-[#611DD0] border-b-2 border-[#611DD0] text-xl font-semibold mb-6">Create New Story</h2>
+        <h2 className="text-center text-[#611DD0] border-b-2 border-[#611DD0] text-xl font-semibold mb-6">
+          Create New Story
+        </h2>
 
-        <form onSubmit={handleSubmit} className="w-full h-[calc(100%-100px)] mt-10 flex flex-col items-center justify-between">
+        <form
+          onSubmit={handleSubmit}
+          className="w-full h-[calc(100%-100px)] mt-10 flex flex-col items-center justify-between"
+        >
           <div className="flex flex-col gap-6 items-center w-[90%]">
             <div className="flex items-center gap-2 w-full">
               <FaCamera className="text-[#611DD0] text-2xl" />

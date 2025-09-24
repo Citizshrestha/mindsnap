@@ -1,3 +1,4 @@
+// server.js
 import express from "express";
 import connectDB from "./config/db.js";
 import dotenv from "dotenv";
@@ -23,6 +24,7 @@ import userTagRoutes from "./routes/userTagRoutes.js";
 import likeRoutes from "./routes/likeRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import hashtagRoutes  from "./routes/hashtagRoutes.js";
+import highlightRoutes  from "./routes/highlightRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -61,17 +63,24 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/comments", commentRoutes);
 app.use("/api/conversations", conversationRoutes);
+console.log('Registering routes...');
 app.use("/api/messages", messageRoutes);
+
+console.log('=== REGISTERED MESSAGE ROUTES ===');
+messageRoutes.stack.forEach(layer => {
+  if (layer.route) {
+    const methods = Object.keys(layer.route.methods).map(method => method.toUpperCase()).join(', ');
+    console.log(`${methods} ${layer.route.path}`);
+  }
+});
+console.log('=================================');
 app.use("/api/stories", storyRoutes);
 app.use("/api/user-tags", userTagRoutes);
 app.use("/api/likes", likeRoutes);
 app.use("/api/notifications", notificationRoutes);
-app.use("/api/hashtags", (req, res, next) => {
-  console.log('🔍 Hashtag route accessed:', req.method, req.url);
-  console.log('🔑 Auth header:', req.headers.authorization);
-  next();
-});
+app.use("/api/hashtags", hashtagRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/highlights", highlightRoutes);
 
 // ---------------------- ERROR HANDLER ----------------------
 app.use((err, req, res, next) => {
@@ -114,8 +123,32 @@ io.use((socket, next) => {
   }
 });
 
+const onlineUsers = new Map();
+
 io.on("connection", (socket) => {
-  console.log("New Client Connected: ", socket.id);
+  console.log(`New Client Connected: ${socket.id} (User: ${socket.userId})`);
+  
+  // Track user as online
+  onlineUsers.set(socket.userId, {
+    socketId: socket.id,
+    status: "online",
+    lastSeen: new Date()
+  });
+
+  // Update user status in database
+  User.findByIdAndUpdate(socket.userId, {
+    onlineStatus: "online",
+    isOnline: true,
+    lastSeen: new Date(),
+    socketId: socket.id
+  }).exec();
+
+  // Broadcast online status to all users
+  io.emit("userStatusUpdate", {
+    userId: socket.userId,
+    status: "online",
+    isOnline: true
+  });
 
   socket.on("joinUser", (userId) => {
     if (socket.userId !== userId) {
@@ -141,9 +174,13 @@ io.on("connection", (socket) => {
   });
 
   socket.on("sendMessage", async (messageData) => {
-    const { conversationId, message } = messageData;
-    if (!conversationId || !message) {
-      console.error("Invalid message data structure");
+    console.log("Received sendMessage event:", messageData);
+    
+    const { conversationId, content, receiverId } = messageData;
+    
+    if (!conversationId || !content) {
+      console.error("Invalid message data structure:", messageData);
+      socket.emit("messageError", { error: "Invalid message data: conversationId and content are required" });
       return;
     }
 
@@ -151,13 +188,14 @@ io.on("connection", (socket) => {
       const req = {
         params: { conversationId },
         body: {
-          content: message.content,
-          type: message.messageType || "text",
-          receiverId: message.receiver || null,
-          replyTo: message.replyTo || null,
+          content: content,
+          type: "text",
+          receiverId: receiverId || null,
+          replyTo: null,
         },
         user: { _id: socket.userId },
       };
+      
       const res = {
         status: function (code) {
           this.statusCode = code;
@@ -173,6 +211,7 @@ io.on("connection", (socket) => {
 
       if (res.data) {
         io.to(conversationId).emit("newMessage", res.data);
+        console.log("Message sent successfully:", res.data._id);
       }
     } catch (error) {
       console.error("Error saving message:", error);
@@ -180,19 +219,21 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("typingStart", (conversationId) => {
-    socket.to(conversationId).emit("userTyping", {
-      userId: socket.userId,
-      conversationId,
-      isTyping: true,
-    });
+ socket.on("typingStart", (data) => {
+  socket.to(data.receiverId).emit("userTyping", { // ← This emits 'userTyping'
+    userId: data.userId,
+    receiverId: data.receiverId,
+    isTyping: true
   });
+});
 
-  socket.on("typingStop", (conversationId) => {
-    socket.to(conversationId).emit("userTyping", {
-      userId: socket.userId,
-      conversationId,
-      isTyping: false,
+  socket.on("typingStop", (data) => {
+    const { receiverId, userId } = data;
+    // Broadcast to all users in the conversation except the sender
+    socket.to(receiverId).emit("userTyping", {
+      userId: userId,
+      receiverId: receiverId,
+      isTyping: false
     });
   });
 
@@ -205,12 +246,75 @@ io.on("connection", (socket) => {
       callback(0);
     }
   });
- 
 
+ socket.on("sendNotification", async (data) => {
+  try {
+    const { recipientId, senderId, senderUsername, senderProfilePicture, targetType, targetId, type, message, reactionType } = data;
+
+    const sender = await User.findById(senderId);
+    if (!sender) {
+      console.error("Sender not found:", senderId);
+      return;
+    }
+
+    // Check for existing notification to avoid duplicates
+    const existingNotification = await Notification.findOne({
+      recipient: recipientId,
+      sender: senderId,
+      targetType,
+      targetId: targetId, // Fixed: removed the incorrect "_id" nesting
+      type: type,
+    });
+
+    let notification;
+    
+    if (existingNotification) {
+      // Update existing notification
+      existingNotification.message = message;
+      existingNotification.read = false;
+      existingNotification.createdAt = new Date();
+      if (reactionType) {
+        existingNotification.reactionType = reactionType;
+      }
+      await existingNotification.save();
+      notification = existingNotification;
+    } else {
+      // Create new notification
+      const notificationData = {
+        recipient: recipientId,
+        sender: senderId,
+        type: type,
+        targetType,
+        targetId: targetId, // Fixed: store targetId directly, not nested
+        read: false,
+        message: message,
+      };
+      
+      // Add reactionType if it exists (for like notifications)
+      if (reactionType) {
+        notificationData.reactionType = reactionType;
+      }
+      
+      notification = await Notification.create(notificationData);
+    }
+
+    // Populate the notification
+    const populatedNotification = await Notification.findById(notification._id)
+      .populate("sender", "username profilePicture")
+      .populate("recipient", "username");
+
+    // Emit to the recipient
+    io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+    console.log(`📩 ${type} notification (${targetType}) sent to user_${recipientId}`);
+
+  } catch (error) {
+    console.error("Error sending notification:", error);
+  }
+});
 
 socket.on("sendLikeNotification", async (data) => {
   try {
-    const { recipientId, senderId, targetType, targetId, type, reactionType = "like", message } = data;
+    const { recipientId, senderId, senderUsername, senderProfilePicture, targetType, targetId, type, reactionType = "like", message } = data;
     
     // Verify the sender is authenticated
     const sender = await User.findById(senderId);
@@ -224,7 +328,7 @@ socket.on("sendLikeNotification", async (data) => {
       recipient: recipientId,
       sender: senderId,
       targetType,
-      'targetId._id': targetId,
+      targetId: targetId,
       type: "like"
     });
     
@@ -239,13 +343,14 @@ socket.on("sendLikeNotification", async (data) => {
     };
     
     const displayReaction = reactionDisplayNames[reactionType] || 'reacted to';
-    const notificationMessage = message || `${sender.username} ${displayReaction} your ${targetType.toLowerCase()}`;
+    const notificationMessage = message || `${senderUsername || sender.username} ${displayReaction} your ${targetType.toLowerCase()}`;
     
     if (existingNotification) {
       // Update existing notification
       existingNotification.message = notificationMessage;
-      existingNotification.read = false; // Mark as unread again
-      existingNotification.createdAt = new Date(); // Update timestamp
+      existingNotification.read = false;
+      existingNotification.createdAt = new Date();
+      existingNotification.reactionType = reactionType;
       await existingNotification.save();
       
       // Populate the updated notification
@@ -263,9 +368,10 @@ socket.on("sendLikeNotification", async (data) => {
         sender: senderId,
         type: "like",
         targetType,
-        targetId: { _id: targetId },
+        targetId: targetId,
         read: false,
-        message: notificationMessage
+        message: notificationMessage,
+        reactionType: reactionType
       });
       
       // Populate the notification
@@ -283,9 +389,173 @@ socket.on("sendLikeNotification", async (data) => {
   }
 });
 
+  // socket.on("sendCommentNotification", async (data) => {
+  //   try {
+  //     const { recipientId, senderId, senderUsername, senderProfilePicture, targetType, targetId, type, message } = data;
 
+  //     const sender = await User.findById(senderId);
+  //     if (!sender) {
+  //       console.error("Sender not found:", senderId);
+  //       return;
+  //     }
+
+  //     const existingNotification = await Notification.findOne({
+  //       recipient: recipientId,
+  //       sender: senderId,
+  //       targetType,
+  //       "targetId._id": targetId,
+  //       type: "comment",
+  //     });
+
+  //     if (existingNotification) {
+  //       existingNotification.message = message;
+  //       existingNotification.read = false;
+  //       existingNotification.createdAt = new Date();
+  //       await existingNotification.save();
+
+  //       const populatedNotification = await Notification.findById(existingNotification._id)
+  //         .populate("sender", "username profilePicture")
+  //         .populate("recipient", "username");
+
+  //       io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+  //       console.log(`📩 Comment notification updated for user_${recipientId}`);
+  //     } else {
+  //       const notification = await Notification.create({
+  //         recipient: recipientId,
+  //         sender: senderId,
+  //         type: "comment",
+  //         targetType,
+  //         targetId: { _id: targetId },
+  //         read: false,
+  //         message,
+  //       });
+
+  //       const populatedNotification = await Notification.findById(notification._id)
+  //         .populate("sender", "username profilePicture")
+  //         .populate("recipient", "username");
+
+  //       io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+  //       console.log(`📩 New comment notification sent to user_${recipientId}`);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error sending comment notification:", error);
+  //   }
+  // });
+
+  // socket.on("sendCommentLikeNotification", async (data) => {
+  //   try {
+  //     const { recipientId, senderId, senderUsername, senderProfilePicture, targetType, targetId, type, message } = data;
+
+  //     const sender = await User.findById(senderId);
+  //     if (!sender) {
+  //       console.error("Sender not found:", senderId);
+  //       return;
+  //     }
+
+  //     const existingNotification = await Notification.findOne({
+  //       recipient: recipientId,
+  //       sender: senderId,
+  //       targetType: "Comment",
+  //       "targetId._id": targetId,
+  //       type: "like",
+  //     });
+
+  //     if (existingNotification) {
+  //       existingNotification.message = message;
+  //       existingNotification.read = false;
+  //       existingNotification.createdAt = new Date();
+  //       await existingNotification.save();
+
+  //       const populatedNotification = await Notification.findById(existingNotification._id)
+  //         .populate("sender", "username profilePicture")
+  //         .populate("recipient", "username");
+
+  //       io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+  //       console.log(`📩 Comment like notification updated for user_${recipientId}`);
+  //     } else {
+  //       const notification = await Notification.create({
+  //         recipient: recipientId,
+  //         sender: senderId,
+  //         type: "like",
+  //         targetType: "Comment",
+  //         targetId: { _id: targetId },
+  //         read: false,
+  //         message,
+  //       });
+
+  //       const populatedNotification = await Notification.findById(notification._id)
+  //         .populate("sender", "username profilePicture")
+  //         .populate("recipient", "username");
+
+  //       io.to(`user_${recipientId}`).emit("newNotification", populatedNotification);
+  //       console.log(`📩 New comment like notification sent to user_${recipientId}`);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error sending comment like notification:", error);
+  //   }
+  // });
+
+ // In your socket service or server.js
+socket.on("deleteMessage", (data) => {
+  socket.to(data.conversationId).emit("messageDeleted", {
+    messageId: data.messageId
+  });
+});
+
+socket.on("editMessage", (data) => {
+  socket.to(data.conversationId).emit("messageEdited", {
+    messageId: data.messageId,
+    content: data.content,
+    isEdited: true,
+    editedAt: new Date()
+  });
+});
+
+  // Handle manual logout
+  socket.on("userLogout", async (data) => {
+    console.log(`🔌 User ${data.userId} manually logging out`);
+    
+    try {
+      // Update user status to offline immediately
+      await User.findByIdAndUpdate(data.userId, {
+        onlineStatus: "offline",
+        isOnline: false,
+        lastSeen: new Date()
+      });
+
+      // Remove from online users
+      onlineUsers.delete(data.userId);
+
+      // Broadcast offline status
+      io.emit("userStatusUpdate", {
+        userId: data.userId,
+        status: "offline",
+        isOnline: false
+      });
+
+      console.log(`✅ User ${data.userId} status updated to offline`);
+    } catch (error) {
+      console.error("Error updating user status on manual logout:", error);
+    }
+  });
   socket.on("disconnect", (reason) => {
-    console.log(`❌ Client Disconnected: ${socket.id} - Reason: ${reason}`);
+    console.log(`❌ Client Disconnected: ${socket.id} (User: ${socket.userId}) - Reason: ${reason}`);
+    
+    // Update user status to offline
+    onlineUsers.delete(socket.userId);
+    
+    User.findByIdAndUpdate(socket.userId, {
+      onlineStatus: "offline",
+      isOnline: false,
+      lastSeen: new Date()
+    }).exec();
+
+    // Broadcast offline status
+    io.emit("userStatusUpdate", {
+      userId: socket.userId,
+      status: "offline",
+      isOnline: false
+    });
   });
 
   socket.on("error", (error) => {

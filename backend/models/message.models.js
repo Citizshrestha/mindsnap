@@ -10,7 +10,7 @@ const messageSchema = new mongoose.Schema(
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: false, // Not required for group chats
+      required: false,
     },
     content: {
       type: String,
@@ -30,6 +30,12 @@ const messageSchema = new mongoose.Schema(
     fileSize: {
       type: Number,
     },
+    mimeType: {
+      type: String,
+    },
+    cloudinaryPublicId: {
+      type: String,
+    },
     status: {
       type: String,
       enum: ["sent", "delivered", "seen"],
@@ -39,6 +45,13 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+    },
     forwardedFrom: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
@@ -46,7 +59,7 @@ const messageSchema = new mongoose.Schema(
     replyTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Message",
-      default: null, // For replying to specific messages
+      default: null,
     },
     reactions: [
       {
@@ -55,14 +68,14 @@ const messageSchema = new mongoose.Schema(
           ref: "User",
         },
         reaction: {
-          type: String, // e.g., "👍", "❤️"
+          type: String,
           required: true,
         },
       },
     ],
     isPinned: {
       type: Boolean,
-      default: false, // For pinning important messages
+      default: false,
     },
     isDeleted: {
       type: Boolean,
@@ -82,5 +95,12 @@ const messageSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Indexes for performance
+messageSchema.index({ conversation: 1, createdAt: -1 });
+messageSchema.index({ sender: 1 });
+messageSchema.index({ receiver: 1 });
+messageSchema.index({ status: 1 });
+messageSchema.index({ isDeleted: 1 });
 
 export const Message = mongoose.model("Message", messageSchema);

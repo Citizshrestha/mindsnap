@@ -1,11 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 import { IoCloseSharp } from "react-icons/io5";
-import axiosClient from "../../api/axiosClient";
 import { socketService } from "../../services/socketServices";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
-import { sampleNotifications } from "../../data/sampleNotification";
-
+import { useDispatch, useSelector } from "react-redux";
+import { incrementUnreadMessageCount } from "../../redux/slices/messageSlice";
+import {
+  setNotifications,
+  addNotification,
+  removeNotification,
+  markNotificationAsRead,
+  setLoading,
+} from "../../redux/slices/notificationSlice";
+import axiosClient from "../../api/axiosClient";
+import { setNotificationModalOpen } from "../../redux/slices/uiSlice";
+import type { RootState } from "../../redux/store";
+// import LoadingSpinner from "../ui/LoadingSpinner";
+import NotificationSkeleton from "../ui/NotificationSkeleton";
 export interface TargetId {
   _id: string;
   [key: string]: string | number | boolean | undefined;
@@ -13,7 +24,7 @@ export interface TargetId {
 
 export interface Notification {
   _id: string;
-  sender: {
+  sender?: {
     _id: string;
     username: string;
     profilePicture: string;
@@ -41,7 +52,11 @@ const isValidObjectId = (id: string): boolean => {
 
 const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChange }) => {
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const dispatch = useDispatch();
+  
+  // Get notifications from Redux store
+  const notifications = useSelector((state: RootState) => state.notification.notifications);
+  const isLoading = useSelector((state: RootState) => state.notification.loading);
   const [showDropdown, setShowDropdown] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +83,11 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
 
   const fetchNotifications = useCallback(async () => {
     try {
+      dispatch(setLoading(true));
       const token = localStorage.getItem("accessToken");
       if (!token || typeof token !== "string") {
         setError("No authentication token available");
+        dispatch(setLoading(false));
         return;
       }
 
@@ -84,9 +101,9 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
         
         // Process notifications - only check follow status for valid IDs
         const updatedNotifications = await Promise.all(
-          dbNotifications.map(async (notif: Notification) => {
-            if (notif.type === "follow" && notif.sender._id && isValidObjectId(notif.sender._id)) {
-              const followStatus = await checkFollowStatus(notif.sender._id);
+          dbNotifications.filter((notif: Notification) => notif && notif.sender && notif.sender?._id).map(async (notif: Notification) => {
+            if (notif.type === "follow" && notif.sender?._id && isValidObjectId(notif.sender?._id)) {
+              const followStatus = await checkFollowStatus(notif.sender?._id);
               return { ...notif, isFollowing: followStatus };
             }
             return notif;
@@ -94,12 +111,15 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
         );
         
         // Combine with sample notifications
-        const combinedNotifications = [...sampleNotifications, ...updatedNotifications].filter(
-          (notif) => notif.sender && notif.sender._id && notif.sender.username && notif.sender.profilePicture
+        const combinedNotifications = updatedNotifications.filter(
+          (notif) => notif.sender && notif.sender?._id && notif.sender.username && notif.sender.profilePicture
         );
         
         combinedNotifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        setNotifications(combinedNotifications);
+        
+        // Update Redux store with fetched notifications
+        dispatch(setNotifications(combinedNotifications));
+        
         const unreadCount = combinedNotifications.filter((n: Notification) => !n.read).length;
         onUnreadCountChange(unreadCount);
       } else {
@@ -108,8 +128,10 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
     } catch (err) {
       console.error("Error fetching notifications:", err);
       setError("Error fetching notifications. Please try again.");
+    } finally {
+      dispatch(setLoading(false));
     }
-  }, [onUnreadCountChange]);
+  }, [dispatch, onUnreadCountChange]);
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
@@ -122,9 +144,9 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setNotifications((prev: Notification[]) =>
-        prev.map((notif: Notification) => (notif._id === notificationId ? { ...notif, read: true } : notif))
-      );
+      // Update Redux store
+      dispatch(markNotificationAsRead(notificationId));
+      
       const unreadCount = notifications.filter((n: Notification) => !n.read).length - 1;
       onUnreadCountChange(unreadCount);
     } catch (err) {
@@ -134,20 +156,76 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
   };
 
   const handleNotificationClick = (notification: Notification) => {
+    console.log('Notification clicked:', notification);
+    
     if (!notification.read) {
       handleMarkAsRead(notification._id);
     }
     
-    // Only navigate to profile if it's a valid user ID
-    if (notification.sender._id && isValidObjectId(notification.sender._id)) {
-      if (notification.type === "follow") {
-        navigate(`/profile/${notification.sender._id}`);
-      } else {
-        navigate(`/profile/${notification.sender._id}`);
-      }
-    } else {
-      console.warn("Cannot navigate to profile - invalid user ID:", notification.sender._id);
-      toast.info("This is a sample notification - cannot navigate to profile");
+    // Close the notification dropdown
+    onClose();
+    
+    // Handle navigation based on notification type
+    switch (notification.type) {
+      case "follow":
+      case "follow_back":
+        // Navigate to the profile of the user who followed
+        if (notification.sender?._id && isValidObjectId(notification.sender._id)) {
+          navigate(`/profile/${notification.sender._id}`);
+          toast.success(`Viewing ${notification.sender?.username || 'user'}'s profile`);
+        } else {
+          toast.error("Cannot navigate to profile - invalid user ID");
+        }
+        break;
+        
+      case "message":
+        // Navigate to the conversation with the message sender
+        // Use targetId if it contains conversation ID, otherwise use sender ID
+        const conversationId = (notification.targetType === "Message" && notification.targetId?._id) 
+          ? notification.targetId._id 
+          : notification.sender?._id;
+          
+        if (conversationId && isValidObjectId(conversationId)) {
+          navigate(`/messages?conversationId=${conversationId}`);
+          toast.success(`Opening conversation with ${notification.sender?.username || 'user'}`);
+        } else {
+          toast.error("Cannot navigate to conversation - invalid conversation ID");
+        }
+        break;
+        
+      case "like":
+      case "comment":
+        // Navigate to home page with post ID as query parameter
+        // Since there's no dedicated post route, we'll go to home where posts are displayed
+        if (notification.targetId?._id && isValidObjectId(notification.targetId._id)) {
+          navigate(`/home?postId=${notification.targetId._id}`);
+          toast.info(`Navigating to ${notification.type} on your post`);
+        } else {
+          // Fallback to home page
+          navigate('/home');
+          toast.info(`Viewing your posts`);
+        }
+        break;
+        
+      case "tag":
+        // Navigate to home page for tagged post
+        if (notification.targetId?._id && isValidObjectId(notification.targetId._id)) {
+          navigate(`/home?postId=${notification.targetId._id}`);
+          toast.info("Navigating to post where you were tagged");
+        } else {
+          navigate('/home');
+          toast.info("Viewing posts");
+        }
+        break;
+        
+      default:
+        // Fallback to profile navigation for unknown types
+        if (notification.sender?._id && isValidObjectId(notification.sender._id)) {
+          navigate(`/profile/${notification.sender._id}`);
+        } else {
+          toast.info("Cannot navigate - invalid notification data");
+        }
+        break;
     }
   };
 
@@ -157,40 +235,84 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
     const handleNewNotification = (notification: Notification) => {
       console.log("Received new notification via socket:", notification);
       
-      // Update notifications list with new notification
-      setNotifications((prev: Notification[]) => {
-        const newNotifications = [notification, ...prev].sort(
-          (a: Notification, b: Notification) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        const unreadCount = newNotifications.filter((n: Notification) => !n.read).length;
-        onUnreadCountChange(unreadCount);
-        return newNotifications;
-      });
+      // Add notification to Redux store
+      dispatch(addNotification(notification));
+      
+      // Show toast notification based on type
+      if (notification.type === "message") {
+        toast.info(`💬 ${notification.sender?.username}: ${notification.message}`);
+        // Increment unread message count in sidebar
+        dispatch(incrementUnreadMessageCount());
+      } else if (notification.type === "like") {
+        toast.success(`👍 ${notification.sender?.username} liked your post`);
+      } else if (notification.type === "comment") {
+        toast.info(`💬 ${notification.sender?.username} commented on your post`);
+      } else if (notification.type === "follow") {
+        toast.success(`👤 ${notification.sender?.username} started following you`);
+      }
+    };
+
+    const handleNotificationDeleted = (data: { notificationId: string; messageId: string }) => {
+      console.log("Notification deleted via socket:", data);
+      
+      // Remove notification from Redux store
+      dispatch(removeNotification(data.notificationId));
+      
+      // Show toast that message was deleted
+      toast.info("📭 A message notification was removed");
     };
 
     socketService.onNotification(handleNewNotification);
 
+    // Listen for real-time message notifications
+    const handleNewMessageNotification = (notification: Notification) => {
+      console.log("Received new message notification:", notification);
+      
+      // Add notification to Redux store
+      dispatch(addNotification(notification));
+      
+      // Show toast notification for message
+      if (notification.type === "message") {
+        toast.info(`💬 ${notification.sender?.username}: ${notification.message}`);
+        // Increment unread message count in sidebar
+        dispatch(incrementUnreadMessageCount());
+      }
+    };
+
+    // Use the socket instance directly for the new notification event
+    const socket = (socketService as any).socket;
+    if (socket) {
+      socket.on("newNotification", handleNewMessageNotification);
+      socket.on("notificationDeleted", handleNotificationDeleted);
+    }
+
     return () => {
       socketService.offNotification(handleNewNotification);
+      if (socket) {
+        socket.off("newNotification", handleNewMessageNotification);
+        socket.off("notificationDeleted", handleNotificationDeleted);
+      }
     };
-  }, [onUnreadCountChange, fetchNotifications]);
+  }, [dispatch, onUnreadCountChange]);
 
   const handleSeeAll = useCallback(() => {
     setShowAll(true);
     setShowDropdown(false);
-  }, []);
+    dispatch(setNotificationModalOpen(true));
+  }, [dispatch]);
 
   const closeAll = useCallback(() => {
     setShowDropdown(false);
     setShowAll(false);
+    dispatch(setNotificationModalOpen(false));
     onClose();
-  }, [onClose]);
+  }, [onClose, dispatch]);
 
   const currentYear = new Date().getFullYear();
 
   if (error) {
     return (
-      <div className="absolute right-0 mt-2 w-96 bg-white rounded-[20px] shadow-lg z-50 p-4">
+      <div className="fixed right-4 top-20 w-96 bg-white rounded-[20px] shadow-lg z-[999998] p-4">
         <p className="text-red-500">{error}</p>
         <button onClick={closeAll} className="mt-2 text-[#611DD0] text-xl cursor-pointer">
           <IoCloseSharp size={25} />
@@ -202,14 +324,26 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
   return (
     <div className="relative">
       {showDropdown && (
-        <div className="absolute right-0 mt-2 w-96 bg-white rounded-[20px] shadow-lg z-50 p-4 max-h-96 overflow-y-auto">
-          <h3 className="text-[#611DD0] text-lg font-semibold mb-2">Notifications</h3>
+        <div className="fixed right-4 top-20 w-96 bg-white rounded-[20px] shadow-lg z-[999998] p-4 max-h-96 overflow-y-auto">
+          <h3 className="text-[#611DD0] h-[5px] text-lg font-semibold mb-2">Notifications</h3>
           <button onClick={closeAll} className="absolute top-4 right-2 text-[#611DD0] text-xl cursor-pointer">
             <IoCloseSharp size={25} />
           </button>
 
-          // Replace the notification display section with this:
-{notifications.length > 0 ? (
+          {/* Notification list */}
+          {isLoading ? (
+            <NotificationSkeleton count={3} />
+          ) : error ? (
+            <div className="text-center py-4">
+              <p className="text-red-500 mb-2">{error}</p>
+              <button 
+                onClick={fetchNotifications}
+                className="text-[#611DD0] hover:underline"
+              >
+                Try Again
+              </button>
+            </div>
+          ) : notifications.length > 0 ? (
   notifications.slice(0, 5).map((notification) => {
     const date = new Date(notification.createdAt);
     const isCurrentYear = date.getFullYear() === currentYear;
@@ -227,7 +361,7 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
     
     // If message contains raw _id or isn't properly formatted, create a proper message
     if (!displayMessage || displayMessage.includes('_id') || displayMessage.includes('ObjectId')) {
-      const username = notification.sender.username || "Someone";
+      const username = notification.sender?.username || "Someone";
       const reactionType = notification.type === "like" ? "reacted to" : notification.type;
       const target = notification.targetType.toLowerCase();
       
@@ -253,13 +387,13 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
       <div
         key={notification._id}
         onClick={() => handleNotificationClick(notification)}
-        className={`p-3 border-b border-gray-200 last:border-0 hover:bg-gray-50 rounded transition-colors flex items-start cursor-pointer ${
+        className={`p-2 mt-5 mb-0 border-b border-gray-200 last:border-0 hover:bg-gray-50 rounded transition-colors flex items-start cursor-pointer ${
           !notification.read ? "bg-blue-50" : "bg-white"
         }`}
       >
         <img
-          src={notification.sender.profilePicture || "/default-avatar.png"}
-          alt={`${notification.sender.username || "Unknown"}'s profile`}
+          src={notification.sender?.profilePicture || "/default-avatar.png"}
+          alt={`${notification.sender?.username || "Unknown"}'s profile`}
           className="w-10 h-10 rounded-full mr-3 object-cover flex-shrink-0"
           onError={(e) => (e.currentTarget.src = "/default-avatar.png")}
         />
@@ -290,8 +424,8 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
       )}
 
       {showAll && (
-        <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-60">
-          <div className="relative w-full max-w-md max-h-[80vh] bg-white rounded-2xl p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-transparent bg-opacity-70  flex items-center justify-center z-[999999]">
+          <div className="relative w-full max-w-md max-h-[80vh] bg-white rounded-2xl p-4 overflow-y-auto z-[999999]">
             <button onClick={closeAll} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700">
               <IoCloseSharp size={24} />
             </button>
@@ -320,15 +454,15 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
                     }`}
                   >
                     <img
-                      src={notification.sender.profilePicture || "/default-avatar.png"}
-                      alt={`${notification.sender.username || "Unknown"}'s profile`}
+                      src={notification.sender?.profilePicture || "/default-avatar.png"}
+                      alt={`${notification.sender?.username || "Unknown"}'s profile`}
                       className="w-10 h-10 rounded-full mr-3 object-cover flex-shrink-0"
                       onError={(e) => (e.currentTarget.src = "/default-avatar.png")}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-gray-800 text-left mb-1">
                         {notification.message ||
-                          `${notification.sender.username || "Someone"} ${notification.type}d your ${notification.targetType.toLowerCase()}`}
+                          `${notification.sender?.username || "Someone"} ${notification.type}d your ${notification.targetType.toLowerCase()}`}
                       </p>
                       <span className="text-xs text-left text-gray-500 block mb-2">{formattedDate}</span>
             

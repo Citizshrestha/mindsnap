@@ -25,6 +25,7 @@ import likeRoutes from "./routes/likeRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import hashtagRoutes  from "./routes/hashtagRoutes.js";
 import highlightRoutes  from "./routes/highlightRoutes.js";
+import userDeletionRoutes from "./routes/userDeletionRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -81,6 +82,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/hashtags", hashtagRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/highlights", highlightRoutes);
+app.use("/api/user-deletion", userDeletionRoutes);
 
 // ---------------------- ERROR HANDLER ----------------------
 app.use((err, req, res, next) => {
@@ -220,21 +222,43 @@ io.on("connection", (socket) => {
   });
 
  socket.on("typingStart", (data) => {
-  socket.to(data.receiverId).emit("userTyping", { // ← This emits 'userTyping'
-    userId: data.userId,
-    receiverId: data.receiverId,
+  const { receiverId, userId } = data;
+  
+  // Emit to the specific conversation room for ChatBox
+  socket.to(receiverId).emit("userTyping", {
+    userId: userId,
+    receiverId: receiverId,
     isTyping: true
   });
+  
+  // Also emit to the receiver's user room for ChatList typing indicator
+  socket.to(`user_${receiverId}`).emit("userTyping", {
+    userId: userId,
+    receiverId: receiverId,
+    isTyping: true
+  });
+  
+  console.log(`👤 User ${userId} started typing to ${receiverId}`);
 });
 
   socket.on("typingStop", (data) => {
     const { receiverId, userId } = data;
-    // Broadcast to all users in the conversation except the sender
+    
+    // Emit to the specific conversation room for ChatBox
     socket.to(receiverId).emit("userTyping", {
       userId: userId,
       receiverId: receiverId,
       isTyping: false
     });
+    
+    // Also emit to the receiver's user room for ChatList typing indicator
+    socket.to(`user_${receiverId}`).emit("userTyping", {
+      userId: userId,
+      receiverId: receiverId,
+      isTyping: false
+    });
+    
+    console.log(`👤 User ${userId} stopped typing to ${receiverId}`);
   });
 
   socket.emit("fetchUnreadCount", async (userId, callback) => {
@@ -495,11 +519,19 @@ socket.on("sendLikeNotification", async (data) => {
   //   }
   // });
 
- // In your socket service or server.js
+ // Enhanced message deletion socket handling
 socket.on("deleteMessage", (data) => {
+  console.log("Delete message socket event received:", data);
+  
+  // Broadcast to all users in the conversation
   socket.to(data.conversationId).emit("messageDeleted", {
-    messageId: data.messageId
+    messageId: data.messageId,
+    deletedFor: data.deletedFor || [],
+    hardDelete: data.hardDelete || false,
+    conversationId: data.conversationId
   });
+  
+  console.log(`Message deletion broadcasted to conversation: ${data.conversationId}`);
 });
 
 socket.on("editMessage", (data) => {

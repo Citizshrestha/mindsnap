@@ -4,39 +4,54 @@ import cloudinary from "../config/cloudinary.js";
 import mongoose from "mongoose";
 import { emitNotification } from "../server.js"; 
 import { Notification } from "../models/notification.models.js";
+import { Post } from "../models/post.models.js";
 
 
 // @route GET /api/users/profile
 export const getUserProfileInfo = asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).select(
-    "fullname username postsCount coverImage profilePicture aboutMe vibe vibeDescription followers following"
+    "fullname username email gender dob postsCount coverImage profilePicture aboutMe vibe vibeDescription followers following"
   );
 
   if (!user) {
-    res.status(400).json({
+    return res.status(400).json({
       success: false,
       message: "User not Found"
     });
+  }
+
+  // Dynamically count posts if postsCount seems incorrect
+  const actualPostsCount = await Post.countDocuments({ user: req.user._id });
+  
+  // Update the user's postsCount if different
+  if (user.postsCount !== actualPostsCount) {
+    user.postsCount = actualPostsCount;
+    await user.save();
   }
 
   return res.status(200).json({
     success: true,
     username: user.username,
     fullname: user.fullname,
+    email: user.email,
+    gender: user.gender,
+    dob: user.dob,
     profilePicture: user.profilePicture,
     coverImage: user.coverImage,
     aboutMe: user.aboutMe,
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,
-    postsCount: user.postsCount,
+    postsCount: user.postsCount, // This should now be correct
     followers: user.followers.length,
     following: user.following.length
   });
 });
 
+
+
 // @route PATCH /api/users/update-profile
 export const updateUserProfile = asyncHandler(async (req, res) => {
-  const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture, coverImage  } = req.body;
+  const { fullname, username, gender, dob, vibe, vibeDescription, aboutMe, profilePicture, coverImage } = req.body;
 
   const user = await User.findById(req.user._id);
   if (!user) {
@@ -70,31 +85,32 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     }
     user.profilePicture = profilePicture;
   }
+  
   if (coverImage !== undefined && coverImage !== user.coverImage) {
-  if (user.coverImage) {
-    const publicId = user.coverImage.split("/").pop()?.split(".")[0];
-    if (publicId) {
-      try {
-        const res = await cloudinary.uploader.destroy(publicId);
-        if (res.result !== "ok") {
-          console.warn(`Failed to delete Cloudinary cover image: ${publicId}`);
+    if (user.coverImage) {
+      const publicId = user.coverImage.split("/").pop()?.split(".")[0];
+      if (publicId) {
+        try {
+          const res = await cloudinary.uploader.destroy(publicId);
+          if (res.result !== "ok") {
+            console.warn(`Failed to delete Cloudinary cover image: ${publicId}`);
+          }
+        } catch (err) {
+          console.error("Error deleting old cover image from Cloudinary:", err);
         }
-      } catch (err) {
-        console.error("Error deleting old cover image from Cloudinary:", err);
       }
     }
+    user.coverImage = coverImage;
   }
-  user.coverImage = coverImage;
-}
-
 
   await user.save();
 
   return res.status(200).json({
     success: true,
-    message: "Profile picture updated successfully",
+    message: "Profile updated successfully",
     fullname: user.fullname,
     username: user.username,
+    email: user.email,
     gender: user.gender,
     dob: user.dob,
     vibe: user.vibe,
@@ -103,6 +119,8 @@ export const updateUserProfile = asyncHandler(async (req, res) => {
     postsCount: user.postsCount,
     profilePicture: user.profilePicture,
     coverImage: user.coverImage,
+    followers: user.followers.length,
+    following: user.following.length,
   });
 });
 
@@ -147,7 +165,7 @@ export const getUserById = asyncHandler(async (req, res) => {
   const { userId } = req.params;
 
   const user = await User.findById(userId).select(
-    "fullname username postsCount profilePicture coverImage aboutMe vibe vibeDescription followers following"
+    "fullname username email gender dob postsCount profilePicture coverImage aboutMe vibe vibeDescription followers following"
   );
   
   if (!user) {
@@ -157,22 +175,31 @@ export const getUserById = asyncHandler(async (req, res) => {
     });
   }
 
+  // Dynamically count posts
+  const actualPostsCount = await Post.countDocuments({ user: userId });
+  if (user.postsCount !== actualPostsCount) {
+    user.postsCount = actualPostsCount;
+    await user.save();
+  }
+
   return res.status(200).json({
     success: true,
     username: user.username,
     fullname: user.fullname,
+    email: user.email,
+    gender: user.gender,
+    dob: user.dob,
     profilePicture: user.profilePicture,
     coverImage: user.coverImage,
     aboutMe: user.aboutMe,
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,
-    postsCount: user.postsCount,
+    postsCount: user.postsCount, // Correct count
     followers: user.followers.length,
     following: user.following.length,
     isFollowing: user.followers.includes(req.user._id),
   });
 });
-
 // @route POST /api/users/:id/follow
 export const followUser = asyncHandler(async (req, res) => {
   const targetIdStr = req.params.id;
@@ -405,7 +432,7 @@ export const getUserConnections = asyncHandler(async (req, res) => {
 
   try {
     const user = await User.findById(targetUserId)
-      .populate(type, "username fullname profilePicture")
+      .populate(type, "username fullname profilePicture isOnline lastSeen")
       .select(`${type}`)
       .lean();
 
@@ -429,6 +456,61 @@ export const getUserConnections = asyncHandler(async (req, res) => {
   }
 });
 
+// @route GET /api/users/suggested-connections
+export const getSuggestedConnections = asyncHandler(async (req, res) => {
+  try {
+    console.log('🟢 getSuggestedConnections called');
+    console.log('User ID:', req.user?._id);
+    
+    const currentUserId = req.user._id;
+    
+    // Basic validation
+    if (!currentUserId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID not found"
+      });
+    }
+
+    // Use find() instead of aggregate for simplicity
+    const suggestedUsers = await User.find({
+      _id: { $ne: currentUserId }
+    })
+    .select('username fullname profilePicture vibe followers')
+    .limit(5)
+    .lean();
+
+    console.log('🔵 Found users:', suggestedUsers.length);
+
+    const formattedUsers = suggestedUsers.map(user => ({
+      _id: user._id.toString(),
+      username: user.username,
+      fullname: user.fullname,
+      profilePicture: user.profilePicture || "/default-avatar.png",
+      vibe: user.vibe || '✨ New to MindSnap',
+      followersCount: user.followers?.length || 0,
+      isFollowing: false
+    }));
+    
+    console.log('✅ Sending response with users:', formattedUsers.length);
+    
+    res.status(200).json({
+      success: true,
+      users: formattedUsers
+    });
+    
+  } catch (error) {
+    console.error('🔴 Error in getSuggestedConnections:', error);
+    console.error('Error stack:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message // Include error message for debugging
+    });
+  }
+});
+
 // @route GET /api/users/:userId/getPendingFollowRequests
 export const getPendingFollowRequests = asyncHandler(async (req, res) => {
   const { userId } = req.params;
@@ -445,8 +527,8 @@ export const getPendingFollowRequests = asyncHandler(async (req, res) => {
 
   try {
     const user = await User.findById(targetUserId)
-      .populate("followers", "username fullname profilePicture")
-      .populate("following", "username fullname profilePicture")
+      .populate("followers", "username fullname profilePicture isOnline lastSeen")
+      .populate("following", "username fullname profilePicture isOnline lastSeen")
       .lean();
 
     if (!user) {
@@ -458,13 +540,8 @@ export const getPendingFollowRequests = asyncHandler(async (req, res) => {
 
     let filteredConnections = user[type] || [];
 
-    // ✅ If type is followers, only show those who are not already in following
-    if (type === "followers") {
-      const followingIds = user.following.map(f => f._id.toString());
-      filteredConnections = filteredConnections.filter(
-        follower => !followingIds.includes(follower._id.toString())
-      );
-    }
+    // Show all connections without filtering for search functionality
+    // This allows users to search and chat with all their followers and following
 
     return res.status(200).json({
       success: true,

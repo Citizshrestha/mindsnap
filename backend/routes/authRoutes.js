@@ -13,7 +13,9 @@ import {
   refreshAccessToken,
   checkUserExists,
   googleLogin,
-  changePassword
+  changePassword,
+  sendSignupOtp,
+  verifySignupOtp
 } from '../controllers/authController.js';
 import protect  from '../middleware/authMiddleware.js';
 
@@ -27,13 +29,19 @@ router.post('/google-login',googleLogin);
 router.post('/sendResetPasswordOtp', sendResetPasswordOtp);
 router.post('/refresh', refreshAccessToken);
 
+// Public signup OTP routes (no auth required)
+router.post('/sendSignupOtp', sendSignupOtp);
+router.post('/verifySignupOtp', verifySignupOtp);
+
+// Public password reset routes (no auth required)
+router.post('/verifyResetPasswordOtp', verifyResetPasswordOtp);
+router.post('/resetPassword', resetPassword);
+
 // Protected routes
 router.post('/logout', protect, logoutUser); 
 router.post('/sendOtpEmailVerification', protect, sendOtpEmailVerification); 
 router.post('/verifyEmail', protect, verifyEmail); 
 router.post('/isAuth', protect, isAuthenticated); 
-router.post('/verifyResetPasswordOtp',protect, verifyResetPasswordOtp);
-router.post('/resetPassword', protect, resetPassword);
 router.post('/change-password', protect, changePassword);
 
 

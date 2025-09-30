@@ -15,6 +15,11 @@ const generateToken = (id) => {
   });
 };
 
+// Generate OTP
+const generateOTP = () => {
+  return String(Math.floor(100000 + Math.random() * 900000));
+};
+
 // Reusable function to send email
 const sendEmail = async (mailOptions) => {
   try {
@@ -33,7 +38,7 @@ const sendEmail = async (mailOptions) => {
 
 // @route POST /api/auth/register
 export const registerUser = asyncHandler(async (req, res) => {
-  const { fullname, username, email, password } = req.body;
+  const { fullname, username, email, password, profilePicture } = req.body;
 
   // Generate a secure default password for Google sign-ups or if password is invalid
   let finalPassword = password;
@@ -66,7 +71,19 @@ export const registerUser = asyncHandler(async (req, res) => {
   }
 
   try {
-    const user = await User.create({ fullname, username, email, password: finalPassword });
+    const userData = { 
+      fullname, 
+      username, 
+      email, 
+      password: finalPassword 
+    };
+    
+    // Add profilePicture if provided
+    if (profilePicture) {
+      userData.profilePicture = profilePicture;
+    }
+    
+    const user = await User.create(userData);
 
     const mailOptions = {
       from: process.env.SENDER_EMAIL,
@@ -89,15 +106,23 @@ The MindSnap Team 🌱
 
     const emailResult = await sendEmail(mailOptions);
 
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
     return res.status(201).json({
       success: true,
       message: "User registered successfully",
       emailStatus: emailResult.message,
-      _id: user._id,
-      fullname: user.fullname,
-      username: user.username,
-      email: user.email,
-      token: generateToken(user._id),
+      user: {
+        id: user._id,
+        fullname: user.fullname,
+        username: user.username,
+        email: user.email,
+      },
+      tokens: {
+        accessToken,
+        refreshToken,
+      },
     });
   } catch (error) {
     if (error.code === 11000) {
@@ -657,4 +682,217 @@ export const changePassword = asyncHandler(async (req, res) => {
     success: true,
     message: "Password changed successfully",
   });
+});
+
+// @route POST /api/auth/sendSignupOtp
+export const sendSignupOtp = asyncHandler(async (req, res) => {
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Request body is empty or invalid. Please check again.",
+    });
+  }
+
+  const email = req.body.email?.toLowerCase().trim();
+  const signupFormData = req.body.signupFormData;
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required.",
+    });
+  }
+
+  if (!signupFormData) {
+    return res.status(400).json({
+      success: false,
+      message: "Signup form data is required.",
+    });
+  }
+
+  // Check if user already exists and is verified
+  const existingUser = await User.findOne({ email });
+  if (existingUser && existingUser.isAccountVerified) {
+    return res.status(400).json({
+      success: false,
+      message: "This email is already registered. Please log in.",
+    });
+  }
+
+  // Check if username already exists and is verified
+  const existingUsername = await User.findOne({ 
+    username: signupFormData.username,
+    isAccountVerified: true 
+  });
+  if (existingUsername) {
+    return res.status(400).json({
+      success: false,
+      message: "This username is already taken. Please choose a different username.",
+    });
+  }
+
+  // Generate OTP - simple approach
+  const otp = generateOTP();
+  
+  // Store signup data in simple memory cache (will work for single server)
+  global.signupOtpCache = global.signupOtpCache || {};
+  global.signupOtpCache[email] = {
+    otp: otp,
+    signupFormData: signupFormData,
+    expiresAt: Date.now() + 15 * 60 * 1000, // 15 minutes
+    createdAt: Date.now()
+  };
+
+  console.log("💾 Storing signup OTP in memory:", {
+    email,
+    otp,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  });
+
+  const mailOptions = {
+    from: process.env.SENDER_EMAIL,
+    to: email,
+    subject: `🔐 MindSnap Signup OTP - Verify Your Email 🛡️`,
+    text: `
+Hello ${signupFormData.fullName} 👋,
+
+Welcome to MindSnap! 🎉
+
+Your OTP for email verification is: ${otp}
+
+This OTP is valid for the next 15 minutes. ⏰
+If you didn't request this registration, please ignore this email.
+
+Best regards,
+The MindSnap Team 🌟
+    `,
+  };
+
+  try {
+    await sendEmail(mailOptions);
+    
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent to your email successfully.",
+      userId: email // Return email as identifier
+    });
+  } catch (error) {
+    // Clean up temp data if email fails
+    delete global.signupOtpCache[email];
+    console.error("❌ Failed to send OTP email:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send OTP email. Please try again later.",
+    });
+  }
+});
+
+// @route POST /api/auth/verifySignupOtp
+export const verifySignupOtp = asyncHandler(async (req, res) => {
+  const { userId, otp } = req.body; // userId is actually email
+
+  if (!userId || !otp) {
+    return res.status(400).json({
+      success: false,
+      message: "Email and OTP are required",
+    });
+  }
+
+  // Check if OTP exists in memory cache
+  global.signupOtpCache = global.signupOtpCache || {};
+  const cachedData = global.signupOtpCache[userId]; // userId is email
+
+  console.log("🔍 Verifying signup OTP:", {
+    email: userId,
+    otp,
+    cacheExists: !!cachedData,
+    cachedOtp: cachedData?.otp
+  });
+
+  if (!cachedData) {
+    return res.status(404).json({
+      success: false,
+      message: "OTP expired or not found. Please request a new OTP.",
+    });
+  }
+
+  // Check if OTP has expired
+  if (Date.now() > cachedData.expiresAt) {
+    delete global.signupOtpCache[userId];
+    return res.status(400).json({
+      success: false,
+      message: "OTP has expired. Please request a new one.",
+    });
+  }
+
+  // Check if OTP matches
+  if (cachedData.otp !== otp) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid OTP. Please try again.",
+    });
+  }
+
+  // OTP is correct! Create the user account
+  const { signupFormData } = cachedData;
+  
+  try {
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: userId });
+    if (existingUser && existingUser.isAccountVerified) {
+      delete global.signupOtpCache[userId];
+      return res.status(400).json({
+        success: false,
+        message: "This email is already registered. Please log in.",
+      });
+    }
+
+    // Check if username is taken
+    const existingUsername = await User.findOne({ 
+      username: signupFormData.username,
+      isAccountVerified: true 
+    });
+    if (existingUsername) {
+      delete global.signupOtpCache[userId];
+      return res.status(400).json({
+        success: false,
+        message: "This username is already taken. Please choose a different username.",
+      });
+    }
+
+    // Create new user
+    const newUser = await User.create({
+      fullname: signupFormData.fullName,
+      username: signupFormData.username,
+      email: userId,
+      password: signupFormData.password,
+      isAccountVerified: true
+    });
+
+    // Clean up cache
+    delete global.signupOtpCache[userId];
+
+    console.log("✅ User created successfully:", newUser.email);
+
+    return res.status(200).json({
+      success: true,
+      message: "Registration successful! You can now log in.",
+    });
+
+  } catch (error) {
+    console.error("❌ Error creating user:", error);
+    delete global.signupOtpCache[userId];
+    
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Email or username already exists. Please try with different credentials.",
+      });
+    }
+    
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create user account. Please try again.",
+    });
+  }
 });

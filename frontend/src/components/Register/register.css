@@ -1,8 +1,7 @@
 
   .mainContainer{
    margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: linear-gradient(135deg, #2B0889, #080429);
+  /* font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; */
   height: 100vh;
   display: flex;
   justify-content: center;

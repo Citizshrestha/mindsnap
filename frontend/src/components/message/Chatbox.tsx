@@ -15,6 +15,9 @@ import {
   RiMore2Fill,
 } from "react-icons/ri";
 import { IoCheckmarkDone, IoCheckmark, IoWarning } from "react-icons/io5";
+import { HiOutlineEmojiHappy } from "react-icons/hi";
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 import backgroundChatImage from "../../../public/images/background.png";
 import type { MessageType } from "../../data/messageSample";
 import MediaUploadButton from "./MediaUploadButton";
@@ -26,9 +29,21 @@ import {
   useGetUserByIdQuery,
   useDeleteMessageMutation,
   useEditMessageMutation,
+  useBulkDeleteMessagesMutation,
+  messageApi,
 } from "../../services/messageApi";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import type { RootState } from "../../redux/store";
+import { 
+  addDeletedMessage, 
+  clearDeletedMessages, 
+  toggleSelectionMode,
+  setSelectionMode,
+  toggleMessageSelection,
+  selectAllMessages,
+  clearSelectedMessages,
+  bulkAddDeletedMessages
+} from "../../redux/slices/messageSlice";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { socketService } from "../../services/socketServices";
@@ -143,12 +158,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({
   const [selectedMedia, setSelectedMedia] = useState<File[]>([]);
   const [showMediaPreview, setShowMediaPreview] = useState(false);
   const [mediaCaption, setMediaCaption] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerPosition, setEmojiPickerPosition] = useState({ top: 0, left: 0 });
+  // Removed unused messageInput state
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const debouncedTypingRef = useRef<NodeJS.Timeout | null>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const userId = useSelector((state: RootState) => state.user._id);
   const currentUser = useSelector((state: RootState) => state.user);
+  const deletedMessages = useSelector((state: RootState) => state.message.deletedMessages);
+  const selectedMessages = useSelector((state: RootState) => state.message.selectedMessages);
+  const isSelectionMode = useSelector((state: RootState) => state.message.isSelectionMode);
+  const dispatch = useDispatch();
   const navigate = useNavigate();
 
   // Use the custom hook to get other user info
@@ -168,9 +192,26 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     }
   );
 
+  // Join conversation room for real-time updates and clear deleted messages state
+  useEffect(() => {
+    if (currentConversationId && isConnected) {
+      // console.log(`🔗 Joining conversation room: ${currentConversationId}`);
+      socketService.joinConversation(currentConversationId);
+      
+      // Clear deleted messages when switching conversations
+      dispatch(clearDeletedMessages());
+      
+      return () => {
+        // console.log(`🔗 Leaving conversation room: ${currentConversationId}`);
+        socketService.leaveConversation(currentConversationId);
+      };
+    }
+  }, [currentConversationId, isConnected, dispatch]);
+
   // Delete and Edit mutations
   const [deleteMessage] = useDeleteMessageMutation();
   const [editMessage] = useEditMessageMutation();
+  const [bulkDeleteMessages] = useBulkDeleteMessagesMutation();
 
   // Fixed: Wrap fetchedMessages in useMemo to prevent unnecessary re-renders
   const fetchedMessages = useMemo(() => {
@@ -191,15 +232,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     const byId = new Map<string, MessageType>();
     [...fetchedMessages, ...messages].forEach((m) => {
       if (!m) return;
-      byId.set(m._id, m);
+      // Additional frontend filtering: exclude messages that are marked as deleted
+      if (!deletedMessages.includes(m._id)) {
+        byId.set(m._id, m);
+      }
     });
 
     // REVERSED: Show latest messages last (descending by createdAt) - typical modern chat behavior
-    return Array.from(byId.values()).sort(
+    const sortedMessages = Array.from(byId.values()).sort(
       (a, b) =>
         new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
-  }, [fetchedMessages, messages]);
+    
+    console.log(`💬 Displaying ${sortedMessages.length} messages for conversation ${currentConversationId} (filtered out ${deletedMessages.length} deleted)`);
+    return sortedMessages;
+  }, [fetchedMessages, messages, currentConversationId, deletedMessages]);
 
   // Debug logging
   useEffect(() => {
@@ -262,82 +309,62 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     [isAutoScrollEnabled]
   );
 
-  // Scroll to bottom on render and whenever messages change (to show latest)
-  useEffect(() => {
-    if (displayMessages.length > 0) {
-      setIsAutoScrollEnabled(true);
-      // Use multiple timeouts to ensure scroll works reliably
-      setTimeout(() => {
-        scrollToBottom("auto");
-      }, 100);
-      
-      // Additional timeout for stubborn cases
-      setTimeout(() => {
-        scrollToBottom("auto");
-      }, 300);
-    }
-  }, [displayMessages, scrollToBottom]);
-
-  // Auto-scroll to bottom when conversation changes (higher priority with longer timeout)
-  useEffect(() => {
-    if (currentConversationId && displayMessages.length > 0) {
-      setIsAutoScrollEnabled(true);
-      
-      // Immediate scroll attempt
-      setTimeout(() => {
-        scrollToBottom("auto");
-      }, 50);
-      
-      // Follow-up scroll attempts to ensure it works
-      setTimeout(() => {
-        scrollToBottom("auto");
-      }, 250);
-      
-      setTimeout(() => {
-        scrollToBottom("auto");
-      }, 500);
-    }
-  }, [currentConversationId, scrollToBottom]);
-
-  // Enhanced initial load scroll - specifically for when chat first opens
-  useEffect(() => {
-    if (currentConversationId && displayMessages.length > 0 && scrollRef.current) {
-      // Force scroll to bottom on initial load
-      const forceScrollToBottom = () => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-      };
-
-      // Multiple attempts with increasing delays to handle all scenarios
-      forceScrollToBottom(); // Immediate
-      setTimeout(forceScrollToBottom, 100);
-      setTimeout(forceScrollToBottom, 250);
-      setTimeout(forceScrollToBottom, 500);
-      setTimeout(forceScrollToBottom, 1000); // Additional timeout for slow loading
-    }
-  }, [currentConversationId, displayMessages.length]);
-
-  // Additional effect to ensure scroll to bottom when messages are first loaded
+  // Enhanced scroll to bottom effect - scroll when messages change or conversation changes
   useEffect(() => {
     if (displayMessages.length > 0 && scrollRef.current && !messagesLoading) {
-      // Wait for DOM to update then scroll to bottom
-      const scrollToBottomAfterRender = () => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const scrollContainer = scrollRef.current;
+      
+      // Enhanced scroll to bottom function
+      const scrollToBottom = () => {
+        if (scrollContainer) {
+          // Use scrollIntoView for more reliable scrolling
+          const lastMessage = scrollContainer.lastElementChild;
+          if (lastMessage) {
+            lastMessage.scrollIntoView({ behavior: 'auto', block: 'end' });
+          } else {
+            // Fallback to scrollTop
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
           setIsAutoScrollEnabled(true);
           setIsNearBottom(true);
         }
       };
 
-      // Use requestAnimationFrame to ensure DOM has updated
-      requestAnimationFrame(() => {
-        scrollToBottomAfterRender();
-        // Additional timeout as backup
-        setTimeout(scrollToBottomAfterRender, 100);
-      });
+      // Immediate scroll
+      scrollToBottom();
+      
+      // Backup scroll after DOM updates
+      const timeoutId = setTimeout(scrollToBottom, 100);
+      const timeoutId2 = setTimeout(scrollToBottom, 300);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        clearTimeout(timeoutId2);
+      };
     }
-  }, [displayMessages.length, messagesLoading]);
+  }, [displayMessages.length, currentConversationId, messagesLoading]);
+
+  // Scroll to bottom when conversation changes - with higher priority
+  useEffect(() => {
+    if (currentConversationId && scrollRef.current) {
+      const scrollContainer = scrollRef.current;
+      
+      // Force scroll to bottom when switching conversations
+      const forceScrollToBottom = () => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          setIsAutoScrollEnabled(true);
+          setIsNearBottom(true);
+        }
+      };
+
+      // Multiple attempts with increasing delays to ensure it works
+      forceScrollToBottom();
+      setTimeout(forceScrollToBottom, 50);
+      setTimeout(forceScrollToBottom, 200);
+      setTimeout(forceScrollToBottom, 500);
+    }
+  }, [currentConversationId]);
 
   // Handle scroll events
   useEffect(() => {
@@ -374,7 +401,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
   useEffect(() => {
     if (!isConnected || !currentConversationId) return;
 
-    const handleTypingEvent = (data: { userId: string; isTyping: boolean }) => {
+    const handleTypingEvent = (data: { userId: string; isTyping: boolean; receiverId?: string }) => {
       if (data.userId !== userId) {
         setOtherUserTyping(data.isTyping);
 
@@ -386,12 +413,97 @@ const ChatBox: React.FC<ChatBoxProps> = ({
       }
     };
 
-    socketService.getSocket()?.on("userTyping", handleTypingEvent);
+    // Listen for message deletion events
+    const handleMessageDeleted = (data: { messageId: string; deletedFor: string[]; hardDelete: boolean; conversationId: string }) => {
+      console.log("🗑️ Message deleted event received:", data);
+      console.log("Current conversation ID:", currentConversationId);
+      console.log("Event conversation ID:", data.conversationId);
+      console.log("Current user ID:", userId);
+      console.log("Deleted for users:", data.deletedFor);
+      
+      // Add message to deleted list for immediate UI update
+      dispatch(addDeletedMessage(data.messageId));
+      
+      // Invalidate both Messages and ChatList cache to refresh everything
+      dispatch(messageApi.util.invalidateTags(['ChatList', 'Messages']));
+      
+      console.log("🔄 Invalidated ChatList and Messages cache due to message deletion");
+      
+      // Only refetch if this is for the current conversation
+      if (data.conversationId === currentConversationId) {
+        console.log("✅ Refetching messages due to deletion event");
+        refetchMessages();
+      } else {
+        console.log("❌ Ignoring deletion event - different conversation");
+      }
+    };
+
+    // Listen for message edit events
+    const handleMessageEdited = (data: { messageId: string; content: string; isEdited: boolean; editedAt: string }) => {
+      console.log("Message edited event received:", data);
+      // Refetch messages to update the UI
+      refetchMessages();
+    };
+
+    // Listen for conversation refresh events (for seen deleted messages)
+    const handleConversationRefresh = (data: { conversationId: string; reason: string }) => {
+      console.log("🔄 Conversation refresh event received:", data);
+      if (data.conversationId === currentConversationId) {
+        console.log("✅ Refreshing conversation due to:", data.reason);
+        refetchMessages();
+        // Also clear any stale deleted messages from Redux
+        dispatch(clearDeletedMessages());
+      }
+    };
+
+    // Listen for chat list refresh events
+    const handleChatListRefresh = (data: { reason: string; conversationId: string; deletedBy: string }) => {
+      console.log("💬 Chat list refresh event received:", data);
+      // Force invalidate chat list cache
+      dispatch(messageApi.util.invalidateTags(['ChatList']));
+      console.log("✅ Chat list cache invalidated due to:", data.reason);
+    };
+
+    // Listen for bulk message deletion events
+    const handleBulkMessageDeleted = (data: { messageIds: string[]; conversationId: string; deletedBy: string; count: number }) => {
+      console.log("🗑️ Bulk message deleted event received:", data);
+      
+      // Add all deleted messages to Redux state for immediate UI update
+      dispatch(bulkAddDeletedMessages(data.messageIds));
+      
+      // Invalidate cache
+      dispatch(messageApi.util.invalidateTags(['ChatList', 'Messages']));
+      
+      // If this is for the current conversation, refetch messages
+      if (data.conversationId === currentConversationId) {
+        console.log("✅ Refetching messages due to bulk deletion");
+        refetchMessages();
+      }
+      
+      // Exit selection mode if we were in it
+      if (isSelectionMode) {
+        dispatch(setSelectionMode(false));
+      }
+    };
+
+    // Use the socket service methods for better event handling
+    socketService.onUserTyping(handleTypingEvent);
+    socketService.onMessageDeleted(handleMessageDeleted);
+    socketService.onMessageEdited(handleMessageEdited);
+    socketService.onConversationRefresh(handleConversationRefresh);
+    socketService.onChatListRefresh(handleChatListRefresh);
+    socketService.onBulkMessageDeleted(handleBulkMessageDeleted);
 
     return () => {
       socketService.getSocket()?.off("userTyping", handleTypingEvent);
+      socketService.offMessageDeleted(handleMessageDeleted);
+      socketService.offMessageEdited(handleMessageEdited);
+      socketService.offConversationRefresh(handleConversationRefresh);
+      socketService.offChatListRefresh(handleChatListRefresh);
+      socketService.offBulkMessageDeleted(handleBulkMessageDeleted);
     };
-  }, [isConnected, currentConversationId, userId]);
+  }, [isConnected, currentConversationId, userId, refetchMessages, dispatch, clearDeletedMessages]);
+
 
   // Fixed: Wrap isMe in useCallback and guard against missing sender
   const isMe = useCallback(
@@ -438,11 +550,11 @@ const ChatBox: React.FC<ChatBoxProps> = ({
           <div className="w-3 h-3 rounded-full bg-gray-400 animate-pulse" />
         );
       case "sent":
-        return <IoCheckmark className="w-3 h-3 text-gray-400" />; // Single tick - gray
+        return <IoCheckmark size={16} className="text-white" />; // Single tick
       case "delivered":
-        return <IoCheckmarkDone className="w-3 h-3 text-gray-400" />; // Double tick - gray
+        return <IoCheckmarkDone size={16} className="text-white" />; // Double tick
       case "seen":
-        return <IoCheckmarkDone className="w-3 h-3 text-purple-600" />; // Double tick - purple (message bg color)
+        return <IoCheckmarkDone size={16} className="text-[#E1C13B]" />; // Double tick - yellow
       case "failed":
         return <IoWarning className="w-3 h-3 text-red-400" />;
       default:
@@ -506,6 +618,72 @@ const ChatBox: React.FC<ChatBoxProps> = ({
       typingTimeoutRef.current = null;
     }, 1500);
   }, [isConnected, currentConversationId]);
+
+  // Emoji picker functions
+  const toggleEmojiPicker = useCallback(() => {
+    if (emojiButtonRef.current) {
+      const buttonRect = emojiButtonRef.current.getBoundingClientRect();
+      const pickerHeight = 400; // Approximate height of emoji picker
+      
+      // Calculate position - show above button if not enough space below
+      let top = buttonRect.top - pickerHeight - 8; // Show above button
+      let left = buttonRect.left;
+      
+      // Ensure picker doesn't go off-screen horizontally
+      const pickerWidth = 320; // Approximate width of emoji picker
+      if (left + pickerWidth > window.innerWidth) {
+        left = window.innerWidth - pickerWidth - 20;
+      }
+      if (left < 20) {
+        left = 20;
+      }
+      
+      // Ensure picker doesn't go off-screen vertically
+      if (top < 20) {
+        top = 20;
+      }
+      
+      setEmojiPickerPosition({ top, left });
+    }
+    setShowEmojiPicker(!showEmojiPicker);
+  }, [showEmojiPicker]);
+
+  const handleEmojiSelect = useCallback((emoji: any) => {
+    if (messageInputRef.current) {
+      const input = messageInputRef.current;
+      const start = input.selectionStart || 0;
+      const end = input.selectionEnd || 0;
+      const newText = messageText.slice(0, start) + emoji.native + messageText.slice(end);
+      setMessageText(newText);
+      
+      // Set cursor position after emoji
+      setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(start + emoji.native.length, start + emoji.native.length);
+      }, 0);
+    }
+    setShowEmojiPicker(false);
+  }, [messageText]);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        showEmojiPicker &&
+        emojiButtonRef.current &&
+        !emojiButtonRef.current.contains(target) &&
+        !target.closest('.emoji-picker')
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
 
   // COMPLETELY FIXED: Handle send message without duplicates
@@ -576,24 +754,98 @@ const ChatBox: React.FC<ChatBoxProps> = ({
   // Handle delete message with modern confirmation
   const handleDeleteMessage = async (messageId: string) => {
     try {
-      await deleteMessage(messageId).unwrap();
+      // Immediately add to deleted messages for instant UI feedback
+      dispatch(addDeletedMessage(messageId));
+      
+      const result = await deleteMessage(messageId).unwrap();
       toast.success("Message deleted successfully");
+      
+      // Refetch messages to get updated data from backend
       refetchMessages();
 
-      // Emit socket event for real-time deletion
+      // The backend already emits socket events, but we can emit additional event if needed
       if (isConnected && currentConversationId) {
         socketService.getSocket()?.emit("deleteMessage", {
           messageId,
           conversationId: currentConversationId,
+          deletedFor: [userId],
+          hardDelete: result.hardDelete || false
         });
       }
     } catch (error) {
       console.error("Failed to delete message:", error);
       toast.error("Failed to delete message");
+      // If deletion failed, we might want to remove it from deleted list
+      // But for now, let refetch handle the correct state
     } finally {
       setShowDeleteModal(null);
       setShowDropdown(null);
     }
+  };
+
+  // Handle bulk delete messages
+  const handleBulkDeleteMessages = async () => {
+    if (selectedMessages.length === 0) {
+      toast.warning("No messages selected");
+      return;
+    }
+
+    try {
+      // Immediately add to deleted messages for instant UI feedback
+      dispatch(bulkAddDeletedMessages(selectedMessages));
+      
+      const result = await bulkDeleteMessages({ messageIds: selectedMessages }).unwrap();
+      
+      // Show success message with count
+      const deletedCount = result.deletedCount || selectedMessages.length;
+      toast.success(`Successfully deleted ${deletedCount} message${deletedCount > 1 ? 's' : ''}`);
+      
+      // Emit socket event for real-time bulk deletion to both users
+      if (isConnected && currentConversationId) {
+        socketService.getSocket()?.emit("bulkDeleteMessages", {
+          messageIds: selectedMessages,
+          conversationId: currentConversationId,
+          deletedBy: userId,
+          count: deletedCount,
+        });
+      }
+      
+      // Exit selection mode and clear selections
+      dispatch(setSelectionMode(false));
+      
+      // Refetch messages to get updated data from backend
+      refetchMessages();
+      
+    } catch (error) {
+      console.error("Failed to bulk delete messages:", error);
+      toast.error("Failed to delete selected messages. Please try again.");
+      
+      // Remove the optimistically deleted messages from Redux if the API call failed
+      dispatch(clearSelectedMessages());
+    }
+  };
+
+  // Toggle selection mode
+  const handleToggleSelectionMode = () => {
+    dispatch(toggleSelectionMode());
+  };
+
+  // Handle message selection
+  const handleMessageSelection = (messageId: string) => {
+    if (isSelectionMode) {
+      dispatch(toggleMessageSelection(messageId));
+    }
+  };
+
+  // Select all messages (only current user's messages)
+  const handleSelectAllMessages = () => {
+    const myMessageIds = displayMessages.filter(msg => isMe(msg)).map(msg => msg._id);
+    dispatch(selectAllMessages(myMessageIds));
+  };
+
+  // Clear all selections
+  const handleClearSelections = () => {
+    dispatch(clearSelectedMessages());
   };
 
   // Handle dropdown toggle
@@ -640,7 +892,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     if (!editingMessage || !messageText.trim()) return;
 
     try {
-      await editMessage({
+       await editMessage({
         messageId: editingMessage.id,
         content: messageText,
       }).unwrap();
@@ -648,19 +900,23 @@ const ChatBox: React.FC<ChatBoxProps> = ({
       toast.success("Message updated successfully");
       setEditingMessage(null);
       setMessageText("");
-      refetchMessages();
-
-      // Emit socket event for real-time edit
+      
+      // Emit socket event for real-time edit to both users
       if (isConnected && currentConversationId) {
         socketService.getSocket()?.emit("editMessage", {
           messageId: editingMessage.id,
           content: messageText,
           conversationId: currentConversationId,
+          isEdited: true,
+          editedAt: new Date().toISOString(),
         });
       }
+      
+      // Refetch messages to ensure UI is updated
+      refetchMessages();
     } catch (error) {
       console.error("Failed to edit message:", error);
-      toast.error("Failed to edit message");
+      toast.error("Failed to edit message. Please try again.");
     }
   };
 
@@ -699,66 +955,152 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     setSelectedMedia(files);
     setShowMediaPreview(true);
     setMediaCaption("");
+    setShowEmojiPicker(false); // Close emoji picker when opening media modal
   };
+
+  // Handle adding more files to existing selection
+  const handleAddMoreFiles = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,video/*';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const target = e.target as HTMLInputElement;
+      const newFiles = Array.from(target.files || []);
+      if (newFiles.length > 0) {
+        const validTypes = [
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "image/webp",
+          "video/mp4",
+          "video/quicktime",
+        ];
+        const maxSize = 10 * 1024 * 1024;
+        
+        const invalidFiles = newFiles.filter(
+          (file) => !validTypes.includes(file.type) || file.size > maxSize
+        );
+        
+        if (invalidFiles.length > 0) {
+          toast.error(
+            "Please select valid image (JPEG, PNG, GIF, WebP) or video (MP4) files under 10MB each"
+          );
+          return;
+        }
+        
+        // Add new files to existing selection
+        setSelectedMedia(prev => [...prev, ...newFiles]);
+      }
+    };
+    input.click();
+  };
+
 
   // Handle sending media from preview modal
   const handleSendMedia = async () => {
-    if (!selectedMedia.length || !currentConversationId) return;
+    if (!selectedMedia.length || !currentConversationId) {
+      console.error("No media selected or conversation ID missing");
+      toast.error("No media selected or conversation not found");
+      return;
+    }
 
     setIsUploading(true);
 
     try {
       const token = localStorage.getItem("accessToken");
+      if (!token) {
+        throw new Error("Authentication token not found. Please log in again.");
+      }
+
+      console.log(`Starting upload of ${selectedMedia.length} files to conversation: ${currentConversationId}`);
+
+      // Test endpoint connectivity first
+      const testUrl = `${
+        import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
+      }/api/messages/users`;
+      
+      try {
+        const testResponse = await fetch(testUrl, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        console.log("API connectivity test:", testResponse.status, testResponse.ok);
+      } catch (testError) {
+        console.error("API connectivity test failed:", testError);
+        throw new Error("Cannot connect to server. Please check your connection.");
+      }
 
       // Upload and send each media file
-      for (const file of selectedMedia) {
+      for (let i = 0; i < selectedMedia.length; i++) {
+        const file = selectedMedia[i];
+        console.log(`Uploading file ${i + 1}/${selectedMedia.length}: ${file.name} (${file.type}, ${file.size} bytes)`);
+
         const formData = new FormData();
         formData.append("media", file);
 
-        const response = await fetch(
-          `${
-            import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
-          }/api/messages/upload/${currentConversationId}`,
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-            body: formData,
-          }
-        );
+        const uploadUrl = `${
+          import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"
+        }/api/messages/upload/${currentConversationId}`;
+        
+        console.log("Upload URL:", uploadUrl);
+
+        const response = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            // Don't set Content-Type header - let browser set it with boundary for FormData
+          },
+          body: formData,
+        });
+
+        console.log("Upload response status:", response.status, response.statusText);
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.message || "Upload failed");
+          let errorMessage = `Upload failed with status ${response.status}`;
+          
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+            console.error("Upload error details:", errorData);
+          } catch (parseError) {
+            console.error("Could not parse error response:", parseError);
+            try {
+              const errorText = await response.text();
+              console.error("Raw error response:", errorText);
+            } catch (textError) {
+              console.error("Could not read error response as text:", textError);
+            }
+          }
+          
+          // Show user-friendly error based on status code
+          if (response.status === 401) {
+            errorMessage = "Authentication failed. Please log in again.";
+          } else if (response.status === 403) {
+            errorMessage = "Access denied to this conversation.";
+          } else if (response.status === 404) {
+            errorMessage = "Conversation not found.";
+          } else if (response.status === 413) {
+            errorMessage = "File too large. Please select files under 50MB.";
+          } else if (response.status === 500) {
+            errorMessage = "Server error. Please check if Cloudinary is configured.";
+          }
+          
+          throw new Error(errorMessage);
         }
 
         const result = await response.json();
+        console.log("Upload result:", result);
 
         if (result.success && result.data) {
-          const backendMessage = result.data;
-
-          // Create media message without showing the Cloudinary URL in content
-          const newMessage: Omit<MessageType, "_id"> = {
-            receiver: {
-              _id: currentConversationId,
-              username: otherUserInfo?.username || activeChat,
-              profilePicture: otherUserInfo?.profilePicture,
-            },
-            content: backendMessage.content, // Keep URL for backend compatibility but won't be displayed
-            messageType: backendMessage.messageType,
-            createdAt: backendMessage.createdAt || new Date().toISOString(),
-            status: "sent",
-            sender: {
-              _id: userId,
-              username: "You",
-              profilePicture: "",
-            },
-            mediaUrl: backendMessage.content, // Store media URL separately
-            fileName: backendMessage.fileName || file.name,
-          };
-
-          // Don't call onSendMessage here since the backend already emits via socket
-          // The socket will handle adding the message to the UI
-          console.log("Media uploaded successfully, socket will handle UI update");
+          console.log(`✅ File ${i + 1} uploaded successfully:`, result.data._id);
+          console.log("📤 Backend should emit socket event for message:", result.data);
+          
+          // The message should appear via socket event, not manual addition
+          // Backend emits: io.to(conversationId).emit("newMessage", populatedMessage);
+        } else {
+          console.warn("Upload response indicates failure:", result);
+          throw new Error(result.message || "Upload response indicates failure");
         }
       }
 
@@ -906,9 +1248,11 @@ const ChatBox: React.FC<ChatBoxProps> = ({
   const groupedMessages = groupMessagesByDate();
 
   return (
-    <main className="flex-1 bg-[#F5F6FA] flex flex-col overflow-y-auto  h-[calc(100vh-80px)] w-[1120px]">
+    <main 
+    style={{textAlign: "left"}}
+    className="flex-1 bg-[#F5F6FA] flex flex-col overflow-y-auto  h-[calc(100vh-80px)] w-[1120px]">
       {/* FIXED HEADER - Now sticky/fixed */}
-      <div className="sticky top-0 z-50 flex items-center justify-between p-4 border-b border-gray-200 bg-white shadow-sm">
+      <div className="sticky top-0 z-30 flex items-center justify-between p-4 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center gap-4">
           <img
             src={
@@ -933,11 +1277,11 @@ const ChatBox: React.FC<ChatBoxProps> = ({
             <div className="flex items-center gap-2">
               <div
                 className={`w-2 h-2 rounded-full ${
-                  isConnected ? "bg-green-500" : "bg-gray-400"
+                  otherUserInfo?.isOnline ? "bg-green-500" : "bg-gray-400"
                 }`}
               />
               <span className="text-sm text-gray-500">
-                {isConnected ? "Online" : "Offline"}
+                {otherUserInfo?.isOnline ? "Online" : "Offline"}
               </span>
               {otherUserTyping && (
                 <span className="text-sm text-purple-600 animate-pulse">
@@ -948,6 +1292,20 @@ const ChatBox: React.FC<ChatBoxProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-3 text-white">
+          {/* Selection Mode Toggle */}
+          <button 
+            onClick={handleToggleSelectionMode}
+            className={`h-10 w-10 rounded-full flex justify-center items-center transition ${
+              isSelectionMode 
+                ? 'bg-blue-600 hover:bg-blue-700' 
+                : 'bg-[#611DD0] hover:bg-[#4e16a8]'
+            }`}
+            title="Select Messages"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
           <button className="h-10 w-10 bg-[#611DD0] rounded-full flex justify-center items-center hover:bg-[#4e16a8] transition">
             <FiPhoneCall size={20} />
           </button>
@@ -955,10 +1313,12 @@ const ChatBox: React.FC<ChatBoxProps> = ({
             <FiVideo size={20} />
           </button>
           <button className="h-10 w-10 bg-[#611DD0] rounded-full flex justify-center items-center hover:bg-[#4e16a8] transition">
-            <BsThreeDots size={24} />
+            <BsThreeDots size={20} />
           </button>
         </div>
       </div>
+
+   
 
       {/* Messages Area - Adjusted for fixed header */}
       <div className="relative flex-1 flex flex-col">
@@ -969,13 +1329,13 @@ const ChatBox: React.FC<ChatBoxProps> = ({
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundBlendMode: "overlay",
-            backgroundColor: "rgba(245, 246, 250, 0.9)",
+            // backgroundColor: "",
           }}
-          className="flex-1 p-4 overflow-y-auto scrollbar-thin scrollbar-thumb-purple-500/50 scrollbar-track-gray-100"
+          className="flex-1 p-4 overflow-y-auto chat-scrollbar"
         >
           {messagesLoading ? (
             <div className="flex justify-center items-center h-full">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600" />
             </div>
           ) : displayMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-gray-500">
@@ -995,10 +1355,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({
                       key={msg._id}
                       className={`flex ${
                         isMe(msg) ? "justify-end" : "justify-start"
-                      } mb-3 relative group`}
+                      } mb-3 relative group ${isSelectionMode ? 'items-center' : ''}`}
                       onMouseEnter={() => setHoveredMessage(msg._id)}
                       onMouseLeave={() => setHoveredMessage(null)}
                     >
+                      {/* Selection Checkbox - Only for current user's messages */}
+                      {isSelectionMode && isMe(msg) && (
+                        <div className="flex-shrink-0 mr-10">
+                          <input
+                            type="checkbox"
+                            checked={selectedMessages.includes(msg._id)}
+                            onChange={() => handleMessageSelection(msg._id)}
+                            className="w-4 h-4  text-white bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600 cursor-pointer"
+                          />
+                        </div>
+                      )}
                       {!isMe(msg) && (
                         <img
                           src={getSenderProfilePicture(msg)}
@@ -1140,6 +1511,47 @@ const ChatBox: React.FC<ChatBoxProps> = ({
         )}
       </div>
 
+         {/* Selection Mode Toolbar */}
+         {isSelectionMode && (
+        <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+          <div className="flex items-center space-x-3">
+            <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              {selectedMessages.length} of your messages selected
+            </span>
+            <button
+              onClick={handleSelectAllMessages}
+              className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+            >
+              Select All My Messages
+            </button>
+            <button
+              onClick={handleClearSelections}
+              className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={handleBulkDeleteMessages}
+              disabled={selectedMessages.length === 0}
+              className="px-3 py-1 bg-red-600 text-white text-sm rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              <span>Delete ({selectedMessages.length})</span>
+            </button>
+            <button
+              onClick={() => dispatch(setSelectionMode(false))}
+              className="px-3 py-1 bg-gray-500 text-white text-sm rounded-md hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Message Input - Fixed at bottom */}
       <div className="sticky bottom-0 p-4 flex w-full items-center gap-3 border-t border-gray-200 bg-white z-40">
         <MediaUploadButton
@@ -1152,6 +1564,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
 
         <div className="flex-1 relative">
           <input
+            ref={messageInputRef}
             type="text"
             value={messageText}
             onChange={(e) => {
@@ -1163,9 +1576,20 @@ const ChatBox: React.FC<ChatBoxProps> = ({
               editingMessage ? "Edit your message..." : "Type your message..."
             }
             style={{ background: "#fff", color: "#000" }}
-            className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 pr-12"
+            className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500 pr-20"
             disabled={!isConnected && !currentConversationId}
           />
+          
+          {/* Emoji Button */}
+          <button
+            ref={emojiButtonRef}
+            type="button"
+            onClick={toggleEmojiPicker}
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-purple-600 transition-colors"
+            title="Add emoji"
+          >
+            <HiOutlineEmojiHappy size={20} />
+          </button>
           {!isConnected && (
             <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
               <div
@@ -1225,7 +1649,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
             <h3 className="text-black text-lg font-semibold mb-2">
               Unsend message?
             </h3>
-            <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+            <p className="text-gray-800 text-sm mb-6 leading-relaxed">
               This will remove the message for everyone but people may have seen
               it already. Unsent messages may still be included if the
               conversation is reported.
@@ -1259,7 +1683,32 @@ const ChatBox: React.FC<ChatBoxProps> = ({
         onRemoveMedia={handleRemoveMedia}
         onCaptionChange={setMediaCaption}
         onSendMedia={handleSendMedia}
+        onAddMoreFiles={handleAddMoreFiles}
       />
+
+      {/* Emoji Picker */}
+      {showEmojiPicker && (
+        <div
+          className="emoji-picker fixed z-[999999]"
+          style={{
+            top: `${emojiPickerPosition.top}px`,
+            left: `${emojiPickerPosition.left}px`,
+            zIndex: 999999
+          }}
+        >
+          <Picker
+            data={data}
+            onEmojiSelect={handleEmojiSelect}
+            theme="light"
+            set="native"
+            showPreview={false}
+            showSkinTones={false}
+            emojiButtonSize={28}
+            emojiSize={20}
+            maxFrequentRows={2}
+          />
+        </div>
+      )}
 
       {/* Legacy Media Preview Modal has been completely removed
           and replaced by the MediaPreviewModal component above */}

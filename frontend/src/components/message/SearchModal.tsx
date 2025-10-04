@@ -1,4 +1,3 @@
-// src/components/message/SearchModal.tsx
 import { useState, useEffect } from "react";
 import { FaSearch, FaTimes } from "react-icons/fa";
 import defaultAvatar from "../../../public/images/default.jpg";
@@ -13,24 +12,27 @@ interface User {
 
 interface SearchModalProps {
   startChat: (user: User) => void;
+  startGroupChat?: (users: User[], groupName: string) => void;
   onClose: () => void;
 }
 
-const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
+const SearchModal: React.FC<SearchModalProps> = ({ startChat, startGroupChat, onClose }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<User[]>([]);
+  const [groupName, setGroupName] = useState("");
 
-  // Extract unique users from messageSample
+  // Extract unique users from messageSample based on conversation participants
   useEffect(() => {
     const usersMap: { [key: string]: User } = {};
     messageSample.forEach((msg) => {
-      if (!usersMap[msg.chatUser]) {
-        usersMap[msg.chatUser] = {
+      if (!usersMap[msg.sender._id]) {
+        usersMap[msg.sender._id] = {
           id: msg.sender._id,
-          full_name: msg.chatUser,
-          username: msg.chatUser.replace(/\s/g, "").toLowerCase(),
-          image: `https://i.pravatar.cc/40?u=${msg.chatUser.replace(/\s/g, "")}`,
+          full_name: msg.conversation, // Use conversation as a placeholder name
+          username: msg.conversation.replace(/\s/g, "").toLowerCase(),
+          image: `https://i.pravatar.cc/40?u=${msg.conversation.replace(/\s/g, "")}`,
         };
       }
     });
@@ -49,6 +51,31 @@ const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
         user.full_name.toLowerCase().includes(searchTerm.toLowerCase())
     );
     setFilteredUsers(results);
+  };
+
+  const handleSelectUser = (user: User) => {
+    if (!selectedUsers.find((u) => u.id === user.id)) {
+      setSelectedUsers([...selectedUsers, user]);
+      setFilteredUsers(filteredUsers.filter((u) => u.id !== user.id));
+      setSearchTerm("");
+    }
+  };
+
+  const handleRemoveUser = (userId: string) => {
+    const removedUser = selectedUsers.find((u) => u.id === userId);
+    if (removedUser) {
+      setSelectedUsers(selectedUsers.filter((u) => u.id !== userId));
+      setFilteredUsers([...filteredUsers, removedUser]);
+    }
+  };
+
+  const handleStartGroup = () => {
+    if (groupName.trim() && selectedUsers.length > 1) {
+      startGroupChat(selectedUsers, groupName);
+      setSelectedUsers([]);
+      setGroupName("");
+      onClose();
+    }
   };
 
   return (
@@ -103,10 +130,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
                   <div
                     key={user.id}
                     className="flex items-center gap-3 bg-[#15eabc34] p-3 mb-3 rounded-lg cursor-pointer hover:bg-[#15eabc55]"
-                    onClick={() => {
-                      startChat(user);
-                      onClose();
-                    }}
+                    onClick={() => handleSelectUser(user)}
                   >
                     <img
                       src={user.image || defaultAvatar}
@@ -123,6 +147,57 @@ const SearchModal: React.FC<SearchModalProps> = ({ startChat, onClose }) => {
                 ))
               )}
             </div>
+
+            {/* Selected Users and Group Name */}
+            {selectedUsers.length > 0 && (
+              <div className="mt-4">
+                <h4 className="text-white text-sm font-medium mb-2">Selected Users</h4>
+                <div className="flex flex-wrap gap-2">
+                  {selectedUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center bg-white/20 p-1 rounded-lg"
+                    >
+                      <span className="text-white text-sm mr-2">{user.full_name}</span>
+                      <button
+                        onClick={() => handleRemoveUser(user.id)}
+                        className="text-white hover:text-red-500"
+                      >
+                        <FaTimes size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder="Enter group name"
+                  className="w-full mt-2 p-2 rounded-lg bg-white text-black"
+                />
+                <button
+                  onClick={handleStartGroup}
+                  className="mt-2 w-full bg-[#358BEC] text-white p-2 rounded-lg"
+                  disabled={!groupName.trim() || selectedUsers.length < 2}
+                >
+                  Create Group Chat
+                </button>
+              </div>
+            )}
+
+            {/* Start Chat Button */}
+            {selectedUsers.length === 1 && (
+              <button
+                onClick={() => {
+                  startChat(selectedUsers[0]);
+                  setSelectedUsers([]);
+                  onClose();
+                }}
+                className="mt-4 w-full bg-[#358BEC] text-white p-2 rounded-lg"
+              >
+                Start Chat
+              </button>
+            )}
           </div>
         </div>
       </div>

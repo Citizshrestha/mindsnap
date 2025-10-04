@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { login,googleLogin } from "../../api/auth";
+import { login, googleLogin } from "../../api/auth";
 import logoImg from "../../../public/images/mindsnap logo.png";
 import mobilePic from "../../../public/images/mobilePic.png";
 import "./login.css";
 import axios from "axios";
 import { GoogleLogin } from "@react-oauth/google";
 import type { CredentialResponse } from "@react-oauth/google";
+import { useDispatch } from "react-redux";
+import { setUser } from "../../redux/slices/authSlice";
+import { setUserId, setUsername, setEmail } from "../../redux/slices/userSlice";
 
 
 type FormData = {
@@ -26,6 +29,7 @@ const LoginForm: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
   useEffect(() => {
     document.body.classList.add("componentBackground");
@@ -50,69 +54,121 @@ const LoginForm: React.FC = () => {
     setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
     setError(null);
   };
-
+  
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // This prevents the default form submission behavior
+    
+    if (isLoading) return; // Prevent multiple submissions
+    
     setIsLoading(true);
     setError(null);
 
     try {
-      if (!formData.email || !formData.password) throw new Error("Please fill in all fields");
+      if (!formData.email || !formData.password) {
+        throw new Error("Please fill in all fields");
+      }
 
-      if (formData.rememberMe) localStorage.setItem("rememberedEmail", formData.email);
-      else localStorage.removeItem("rememberedEmail");
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        throw new Error("Please enter a valid email address");
+      }
+
+      if (formData.rememberMe) {
+        localStorage.setItem("rememberedEmail", formData.email);
+      } else {
+        localStorage.removeItem("rememberedEmail");
+      }
 
       const response = await login(formData.email, formData.password);
-      localStorage.setItem("accessToken", response.accessToken);
-      localStorage.setItem("userId", response._id);
+      
+      // Set Redux state
+      dispatch(setUser({
+        _id: response._id,
+        username: response.username,
+        fullname: response.username, // Use username as fallback for fullname
+        profilePicture: "",
+        email: response.email,
+      }));
+      
+      dispatch(setUserId(response._id));
+      dispatch(setUsername(response.username));
+      dispatch(setEmail(response.email));
+      
       toast.success("Login successful!");
       navigate("/home");
     } catch (err: unknown) {
       let errorMessage = "An unexpected error occurred. Please try again.";
+      
       if (axios.isAxiosError(err)) {
-        if (err.response) errorMessage = err.response?.data?.message || "Invalid Credentials";
-        else if (err.request) errorMessage = "Network Error please check your connection";
-      } else if (err instanceof Error) errorMessage = err.message;
+        // Handle Axios errors
+        if (err.response) {
+          // The server responded with an error status
+          errorMessage = err.response.data?.message || "Invalid credentials. Please try again.";
+        } else if (err.request) {
+          // The request was made but no response was received
+          errorMessage = "Network error. Please check your connection.";
+        }
+      } else if (err instanceof Error) {
+        // Handle regular JS errors
+        errorMessage = err.message;
+      }
+      
+      // Set the error state to display in the form
       setError(errorMessage);
       toast.error(errorMessage);
-      console.error("Login error", err);
+      console.error("Login error:", err);
     } finally {
       setIsLoading(false);
     }
   };
-const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-  try {
-    setIsLoading(true);
+  
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    try {
+      setIsLoading(true);
+      setError(null);
 
-    if (!credentialResponse.credential) {
-      throw new Error("No credential received from Google.");
-    }
-
-    // Call our API helper
-    const response = await googleLogin(credentialResponse.credential);
-    
-    localStorage.setItem("accessToken", response.accessToken);
-    localStorage.setItem("userId", response._id);
-    
-    toast.success(`Welcome ${response.username || "User"}!`);
-    navigate("/home");
-  } catch (error) {
-    let errorMessage = "Google login failed";
-    if (axios.isAxiosError(error)) {
-      errorMessage = error.response?.data?.message || errorMessage;
-      // If the error is "no account found", redirect to register
-      if (errorMessage.includes("No account found")) {
-        toast.info("No account found. Please register first.");
-        navigate("/register");
-        return;
+      if (!credentialResponse.credential) {
+        throw new Error("No credential received from Google.");
       }
+
+      // Call our API helper
+      const response = await googleLogin(credentialResponse.credential);
+      
+      // Set Redux state
+      dispatch(setUser({
+        _id: response._id,
+        username: response.username,
+        fullname: response.username, // Use username as fallback for fullname
+        profilePicture: "",
+        email: response.email,
+      }));
+      
+      dispatch(setUserId(response._id));
+      dispatch(setUsername(response.username));
+      dispatch(setEmail(response.email));
+      
+      toast.success(`Welcome ${response.username || "User"}!`);
+      navigate("/home");
+    } catch (error) {
+      let errorMessage = "Google login failed";
+      
+      if (axios.isAxiosError(error)) {
+        errorMessage = error.response?.data?.message || errorMessage;
+        // If the error is "no account found", redirect to register
+        if (errorMessage.includes("No account found")) {
+          toast.info("No account found. Please register first.");
+          navigate("/register");
+          return;
+        }
+      }
+      
+      toast.error(errorMessage);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-    toast.error(errorMessage);
-    setError(errorMessage);
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const togglePasswordVisibility = () => setShowPassword((p) => !p);
   const handleForgotPasswordClick = () => navigate("/forgot-password");
@@ -141,8 +197,8 @@ const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
         {/* Login form */}
         <div className="formContainer p-3 bg-[#16024B] rounded-2xl flex flex-col items-center">
           <div className="form-group rounded-4xl">
-            <button className="login-btn active font-semibold">Log in</button>
-            <button className="register-btn font-semibold" onClick={handleRegisterClick}>
+            <button type="button" className="login-btn active font-semibold">Log in</button>
+            <button type="button" className="register-btn font-semibold" onClick={handleRegisterClick}>
               Register
             </button>
           </div>

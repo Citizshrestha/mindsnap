@@ -91,7 +91,7 @@ export const createPost = asyncHandler(async (req, res) => {
       }
     }
 
-    console.log("Creating post in database...");
+    // console.log("Creating post in database...");
     const post = await Post.create({
       user: req.user._id,
       content: content.trim(),
@@ -144,6 +144,21 @@ export const createPost = asyncHandler(async (req, res) => {
 
 export const getPosts = asyncHandler(async (req, res) => {
   try {
+    // Get user ID to create a consistent random seed for this user
+    const userId = req.user._id.toString();
+    
+    // Create a simple hash from userId to use as seed
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      const char = userId.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    
+    // Use the hash to create a pseudo-random seed (changes daily)
+    const today = new Date().toDateString();
+    const dailySeed = hash + today.length;
+    
     const posts = await Post.find()
       .populate("user", "username profilePicture fullname")
       .populate({
@@ -186,7 +201,33 @@ export const getPosts = asyncHandler(async (req, res) => {
       };
     });
 
-    res.json(postsWithReactions);
+    // Implement seeded random shuffle for consistent but different ordering per user
+    const shuffleWithSeed = (array, seed) => {
+      const shuffled = [...array];
+      let currentIndex = shuffled.length;
+      
+      // Simple seeded random number generator
+      const seededRandom = (seed) => {
+        const x = Math.sin(seed) * 10000;
+        return x - Math.floor(x);
+      };
+      
+      while (currentIndex !== 0) {
+        const randomIndex = Math.floor(seededRandom(seed + currentIndex) * currentIndex);
+        currentIndex--;
+        
+        // Swap elements
+        [shuffled[currentIndex], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[currentIndex]];
+        seed++; // Change seed for next iteration
+      }
+      
+      return shuffled;
+    };
+
+    // Shuffle posts with user-specific seed
+    const randomizedPosts = shuffleWithSeed(postsWithReactions, dailySeed);
+
+    res.json(randomizedPosts);
   } catch (error) {
     console.error("Error fetching posts:", error);
     res.status(500).json({
@@ -379,4 +420,188 @@ export const deletePost = asyncHandler(async (req, res) => {
     success: true,
     message: "Post deleted successfully"
   });
+});
+
+// @route PUT /api/posts/:id
+export const editPost = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { content } = req.body;
+  let mediaUrl = null;
+
+  console.log("=== POST EDIT STARTED ===");
+  console.log("Post ID:", id);
+  console.log("New content:", content);
+  console.log("File:", req.file ? req.file.filename : "No new file");
+
+  // Validate content
+  if (!content || content.trim() === "") {
+    return res.status(400).json({
+      success: false,
+      message: "Content is required",
+    });
+  }
+
+  try {
+    // Find the post
+    const post = await Post.findById(id).populate('user', 'username fullname profilePicture');
+    
+    if (!post) {
+      return res.status(404).json({
+        success: false,
+        message: "Post not found"
+      });
+    }
+
+    // Check if user owns the post
+    if (post.user._id.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only edit your own posts"
+      });
+    }
+
+    // Handle new media upload if provided
+    if (req.file) {
+      try {
+        console.log("Processing new file upload...");
+        
+        // Check if file exists on disk
+        if (!fs.existsSync(req.file.path)) {
+          console.error("File does not exist at path:", req.file.path);
+          throw new Error("Uploaded file not found on server");
+        }
+        
+        const username = req.user.username || "unknown";
+        
+        // Upload new media to Cloudinary
+        const uploadResult = await cloudinary.uploader.upload(req.file.path, {
+          folder: `mindsnap/posts/${username}`,
+          resource_type: "auto",
+          transformation: [
+            { quality: "auto:good" },
+            { fetch_format: "auto" }
+          ]
+        });
+        
+        mediaUrl = uploadResult.secure_url;
+        console.log("New media uploaded successfully:", mediaUrl);
+        
+        // Delete old media from Cloudinary if it exists
+        if (post.image) {
+          try {
+            const publicId = post.image.split('/').pop().split('.')[0];
+            await cloudinary.uploader.destroy(`mindsnap/posts/${username}/${publicId}`);
+            console.log("Deleted old image from Cloudinary");
+          } catch (error) {
+            console.error("Error deleting old image:", error);
+          }
+        }
+        
+        // Clean up uploaded file
+        fs.unlinkSync(req.file.path);
+        
+      } catch (error) {
+        console.error("Error uploading new media:", error);
+        // Clean up file if upload failed
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+        return res.status(500).json({
+          success: false,
+          message: "Failed to upload new media"
+        });
+      }
+    }
+
+    // Extract old and new hashtags
+    const oldHashtagMatches = post.content.match(/#\w+/g) || [];
+    const oldHashtags = oldHashtagMatches.map(tag => tag.toLowerCase());
+    
+    const newHashtagMatches = content.match(/#\w+/g) || [];
+    const newHashtags = newHashtagMatches.map(tag => tag.toLowerCase());
+
+    // Update the post
+    const updateData = {
+      content: content.trim(),
+      ...(mediaUrl && { image: mediaUrl })
+    };
+
+    const updatedPost = await Post.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true }
+    ).populate('user', 'username fullname profilePicture');
+
+    // Remove post from old hashtags that are no longer present
+    const hashtagsToRemove = oldHashtags.filter(tag => !newHashtags.includes(tag));
+    for (const hashtagName of hashtagsToRemove) {
+      try {
+        const hashtag = await Hashtag.findOne({ name: hashtagName });
+        if (hashtag) {
+          hashtag.posts = hashtag.posts.filter(postId => postId.toString() !== id);
+          if (hashtag.posts.length === 0) {
+            // Delete hashtag if no posts are associated with it
+            await Hashtag.findByIdAndDelete(hashtag._id);
+          } else {
+            await hashtag.save();
+          }
+        }
+      } catch (error) {
+        console.error(`Error removing post from hashtag ${hashtagName}:`, error);
+      }
+    }
+
+    // Add post to new hashtags
+    for (const hashtagName of newHashtags) {
+      try {
+        let hashtag = await Hashtag.findOne({ name: hashtagName });
+        
+        if (!hashtag) {
+          hashtag = new Hashtag({
+            name: hashtagName,
+            posts: [updatedPost._id]
+          });
+        } else if (!hashtag.posts.includes(updatedPost._id)) {
+          hashtag.posts.push(updatedPost._id);
+        }
+        
+        await hashtag.save();
+      } catch (error) {
+        console.error(`Error handling hashtag ${hashtagName}:`, error);
+      }
+    }
+
+    console.log("Post updated successfully:", updatedPost._id);
+
+    res.status(200).json({
+      success: true,
+      message: "Post updated successfully",
+      post: {
+        id: updatedPost._id,
+        content: updatedPost.content,
+        image: updatedPost.image,
+        user: {
+          id: updatedPost.user._id,
+          username: updatedPost.user.username,
+          fullname: updatedPost.user.fullname,
+          profilePicture: updatedPost.user.profilePicture
+        },
+        createdAt: updatedPost.createdAt,
+        updatedAt: updatedPost.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error("Error updating post:", error);
+    
+    // Clean up file if error occurred
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: "Failed to update post"
+    });
+  }
 });

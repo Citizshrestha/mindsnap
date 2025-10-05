@@ -1,6 +1,6 @@
 // routes/postRoutes.js
 import express from "express";
-import { createPost, getPosts, commentOnPost, deletePost, getMyPosts, getUserPosts } from "../controllers/postController.js";
+import { createPost, getPosts, commentOnPost, deletePost, getMyPosts, getUserPosts, editPost } from "../controllers/postController.js";
 import protect from "../middleware/authMiddleware.js";
 import multer from "multer";
 import path from "path";
@@ -47,6 +47,7 @@ router.post("/createPost", protect, upload.single('media'), (req, res, next) => 
 }, createPost);
 
 router.get("/getPosts", protect, getPosts);
+router.put("/:id", protect, upload.single('media'), editPost);
 router.delete("/:id", protect, deletePost);
 router.post("/:postId/comments/:commentId/like", protect, commentOnPost);
 router.get("/profile/posts", protect, getMyPosts);

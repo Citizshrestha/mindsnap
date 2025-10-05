@@ -258,15 +258,17 @@ const RegisterForm = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="w-72 mb-8 formContainer">
-          <div className="formHeader flex justify-between gap-10 mb-5">
+          <div className="form-group">
             <button
-              className="loginToggle text-white text-lg font-semibold rounded-lg ml-18 px-4 py-2 hover:bg-gray-700 transition-colors"
+              type="button"
+              className="register-btn font-semibold"
               onClick={handleLoginClick}
             >
               Log in
             </button>
             <button
-              className="registerToggle bg-gradient-to-r mr-10 from-blue-500 to-purple-500 text-white text-lg font-semibold rounded-lg px-4 py-2 hover:from-blue-600 hover:to-purple-600 transition-colors"
+              type="button"
+              className="login-btn active font-semibold"
               disabled
             >
               Register

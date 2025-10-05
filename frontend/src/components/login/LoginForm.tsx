@@ -186,7 +186,7 @@ const LoginForm: React.FC = () => {
         </h1>
       </div>
 
-      <div className="flex items-center gap-10 space-x-14">
+      <div className="flex items-center gap-10 space-x-14 responsive-container">
         {/* Phone preview */}
         <div className="phoneContainer">
           <div className="phone-screen">
@@ -242,12 +242,12 @@ const LoginForm: React.FC = () => {
             </div>
 
             {/* Remember me + Forgot password */}
-            <div className="mb-2 flex justify-between">
+            <div className="mb-4 flex justify-between items-center">
               <label className="flex items-center">
-                <input type="checkbox" name="rememberMe" checked={formData.rememberMe} onChange={handleChange} className="mr-2" />
-                <span className="text-sm">Remember me</span>
+                <input type="checkbox" name="rememberMe" checked={formData.rememberMe} onChange={handleChange} className="mr-2 accent-blue-500" />
+                <span className="text-sm text-white">Remember me</span>
               </label>
-              <button type="button" onClick={handleForgotPasswordClick} className="text-pink-500 text-sm font-semibold underline-offset-2 hover:underline">
+              <button type="button" onClick={handleForgotPasswordClick} className="text-pink-500 text-sm font-semibold hover:text-pink-400 transition-colors">
                 Forgot Password?
               </button>
             </div>

@@ -42,4 +42,237 @@ input:-webkit-autofill:focus {
   border-color: #3b82f6 !important;
 }
 
+/* Unified Form Styling */
+.formContainer {
+  background: linear-gradient(135deg, #16024B, #0A0130);
+  padding: 1.5rem;
+  border: 4px solid #230773;
+  border-radius: 1rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  width: 400px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: formSlideIn 0.6s ease-out;
+}
+
+@keyframes formSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.formContainer:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 30px rgba(35, 7, 115, 0.4);
+}
+
+.formContainer input::placeholder {
+  color: #fff;
+  opacity: 0.8;
+}
+
+/* Button Styling */
+.form-group {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.login-btn, .register-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+}
+
+.login-btn::before, .register-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s;
+}
+
+.login-btn:hover::before, .register-btn:hover::before {
+  left: 100%;
+}
+
+.login-btn {
+  background: linear-gradient(to right, #4fc3f7, #2196f3);
+  color: white;
+  box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
+  transform: translateY(0);
+}
+
+.login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(33, 150, 243, 0.6);
+}
+
+.login-btn.active {
+  background: linear-gradient(to right, #4fc3f7, #2196f3);
+  transform: scale(1.05);
+  box-shadow: 0 8px 25px rgba(33, 150, 243, 0.6);
+}
+
+.register-btn {
+  background: transparent;
+  color: #bbb;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+}
+
+.register-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
+}
+
+.register-btn.active {
+  background: transparent;
+  color: #bbb;
+  transform: scale(1.05);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Input Styling */
+input {
+  transition: all 0.3s ease;
+  background-color: #20035F;
+}
+
+input:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3);
+}
+
+/* Button Animations */
+button[type="submit"] {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+button[type="submit"]:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.4);
+}
+
+button[type="submit"]:active {
+  transform: translateY(-1px);
+}
+
+/* Responsive Design - Mobile and Tablet Only */
+@media (max-width: 1023px) {
+  .mainContainer {
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 100vh !important;
+    padding: 1rem !important;
+    overflow-y: auto !important;
+  }
+  
+  .illustration {
+    display: none !important;
+  }
+  
+  .form-container {
+    width: 100% !important;
+    max-width: 500px !important;
+    padding: 1.5rem !important;
+  }
+  
+  .w-72 {
+    width: 100% !important;
+    max-width: 400px !important;
+  }
+  
+  .mr-130 {
+    margin-right: 0 !important;
+  }
+  
+  .ml-20.mt-20 {
+    margin-left: 0 !important;
+    margin-top: 0 !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .form-container {
+    padding: 1rem !important;
+  }
+  
+  .formContainer {
+    padding: 1rem !important;
+  }
+  
+  .w-72 {
+    max-width: 320px !important;
+  }
+  
+  .formHeader {
+    gap: 0.5rem !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  .loginToggle, .registerToggle {
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+  }
+  
+  .ml-18 {
+    margin-left: 0 !important;
+  }
+  
+  .mr-10 {
+    margin-right: 0 !important;
+  }
+  
+  .relative.mb-6 {
+    margin-bottom: 1rem !important;
+  }
+  
+  input {
+    padding: 0.75rem 0.75rem 0.75rem 2.5rem !important;
+    font-size: 14px !important;
+  }
+  
+  button[type="submit"] {
+    padding: 0.75rem !important;
+    font-size: 16px !important;
+  }
+  
+  .text-4xl {
+    font-size: 1.875rem !important;
+  }
+  
+  .w-25.h-25 {
+    width: 4rem !important;
+    height: 4rem !important;
+  }
+  
+  .mb-8 {
+    margin-bottom: 1.5rem !important;
+  }
+  
+  .pr-2 {
+    padding-right: 0 !important;
+  }
+}
+
 

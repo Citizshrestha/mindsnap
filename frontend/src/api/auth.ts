@@ -8,22 +8,28 @@ interface LoginResponse {
   _id: string;
   username: string;
   email: string;
+  profilePicture?: string;
+  fullname?: string;
 }
 
 interface RegisterResponse {
   success: boolean;
   message: string;
-  emailStatus: string;
-  _id: string;
-  fullname: string;
-  username: string;
-  email: string;
-  token: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+  };
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
 }
 
 interface SendOtpResponse {
   success: boolean;
   message: string;
+  userId?: string;
 }
 
 interface VerifyOtpResponse {
@@ -36,7 +42,7 @@ interface ResetPasswordResponse {
   message: string;
 }
 
-interface isAuthResponse {
+interface IsAuthResponse {
   success: boolean;
   message: string;
 }
@@ -54,13 +60,14 @@ interface GoogleLoginResponse {
   _id: string;
   username: string;
   email: string;
+  profilePicture?: string;
+  fullname?: string;
 }
 
 interface ChangePasswordResponse {
   success: boolean;
   message: string;
 }
-
 
 export const login = async (email: string, password: string): Promise<LoginResponse> => {
   try {
@@ -83,13 +90,32 @@ export const login = async (email: string, password: string): Promise<LoginRespo
 };
 
 export const register = async (
+  userId: string,
+  email: string,
   fullname: string,
   username: string,
-  email: string,
-  password: string
+  password: string,
+  gender?: string,
+  dob?: string,
+  profilePicture?: string
 ): Promise<RegisterResponse> => {
   try {
-    const response = await axiosClient.post("/api/auth/register", { fullname, username, email, password });
+    const response = await axiosClient.post("/api/auth/register", {
+      userId,
+      email,
+      fullname,
+      username,
+      password,
+      gender,
+      dob,
+      profilePicture,
+    });
+    if (response.data.tokens?.accessToken) {
+      localStorage.setItem("accessToken", response.data.tokens.accessToken);
+      localStorage.setItem("userId", response.data.user.id);
+      localStorage.setItem("username", response.data.user.username);
+      axiosClient.defaults.headers.Authorization = `Bearer ${response.data.tokens.accessToken}`;
+    }
     return response.data;
   } catch (error: unknown) {
     if (axios.isAxiosError(error) && error.response) {
@@ -123,11 +149,7 @@ export const googleLogin = async (credential: string): Promise<GoogleLoginRespon
 export const logout = async (): Promise<void> => {
   try {
     await axiosClient.post("/api/auth/logout");
-    
-    // Clear ALL localStorage data completely
     localStorage.clear();
-    
-    // Clear Authorization header
     delete axiosClient.defaults.headers.Authorization;
   } catch (error: unknown) {
     if (axios.isAxiosError(error) && error.response) {
@@ -135,8 +157,6 @@ export const logout = async (): Promise<void> => {
     } else {
       console.error("Logout API Error:", (error as Error).message);
     }
-    
-    // Ensure complete cleanup even if server call fails
     localStorage.clear();
     delete axiosClient.defaults.headers.Authorization;
     throw error;
@@ -171,7 +191,37 @@ export const verifyEmail = async (userId: string, otp: string): Promise<VerifyOt
   }
 };
 
-export const isAuthenticated = async (userId: string): Promise<isAuthResponse> => {
+export const sendSignupOtp = async (email: string, signupFormData: any): Promise<SendOtpResponse & { userId?: string }> => {
+  try {
+    const response = await axiosClient.post("/api/auth/sendSignupOtp", { email, signupFormData });
+    if (response.data.success && response.data.userId) {
+      localStorage.setItem("signupUserId", response.data.userId);
+    }
+    return response.data;
+  } catch (error: unknown) {
+    console.error("Send Signup OTP API Error:", {
+      message: error instanceof Error ? error.message : "Unknown error",
+      details: axios.isAxiosError(error) ? error.response?.data : error,
+    });
+    throw error;
+  }
+};
+
+export const verifySignupOtp = async (userId: string, otp: string): Promise<VerifyOtpResponse> => {
+  try {
+    const response = await axiosClient.post("/api/auth/verifySignupOtp", { userId, otp });
+    return response.data;
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Verify Signup OTP API Error:", error.response.data);
+    } else {
+      console.error("Verify Signup OTP Error:", (error as Error).message);
+    }
+    throw error;
+  }
+};
+
+export const isAuthenticated = async (userId: string): Promise<IsAuthResponse> => {
   try {
     const response = await axiosClient.post("/api/auth/isAuth", { userId });
     return response.data;
@@ -189,16 +239,16 @@ export const sendResetPasswordOtp = async (email: string): Promise<ResetPassword
   try {
     const response = await axiosClient.post("/api/auth/sendResetPasswordOtp", { email });
     if (response.data.success && response.data.userId) {
-      localStorage.setItem("userId", response.data.userId); 
+      localStorage.setItem("userId", response.data.userId);
     }
     return response.data;
-  } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response) {
-      console.error("Send Reset Password Otp Error: ", err.response.data);
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Send Reset Password OTP Error:", error.response.data);
     } else {
-      console.error("Send Reset Password Otp Error:", (err as Error).message);
+      console.error("Send Reset Password OTP Error:", (error as Error).message);
     }
-    throw err;
+    throw error;
   }
 };
 
@@ -206,13 +256,13 @@ export const verifyResetPasswordOtp = async (userId: string, otp: string): Promi
   try {
     const response = await axiosClient.post("/api/auth/verifyResetPasswordOtp", { userId, otp });
     return response.data;
-  } catch (err: unknown) {
-    if (axios.isAxiosError(err) && err.response) {
-      console.error("Verify Reset Password OTP API Error:", err.response.data);
+  } catch (error: unknown) {
+    if (axios.isAxiosError(error) && error.response) {
+      console.error("Verify Reset Password OTP API Error:", error.response.data);
     } else {
-      console.error("Verify Reset Password OTP API Error:", (err as Error).message);
+      console.error("Verify Reset Password OTP Error:", (error as Error).message);
     }
-    throw err;
+    throw error;
   }
 };
 
@@ -246,8 +296,8 @@ export const checkUserExists = async (email: string): Promise<CheckUserExistsRes
 
 export const changePassword = async (newPassword: string): Promise<ChangePasswordResponse> => {
   try {
-    const response = await axiosClient.post("/api/auth/change-password", { 
-      newPassword 
+    const response = await axiosClient.post("/api/auth/change-password", {
+      newPassword,
     });
     return response.data;
   } catch (error: unknown) {

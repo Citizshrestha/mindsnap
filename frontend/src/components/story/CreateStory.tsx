@@ -1,7 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { isAxiosError, AxiosError } from "axios";
 import { toast } from "react-toastify";
 import { FaWindowClose, FaCamera, FaPlay } from "react-icons/fa";
+import { RiEmotionHappyLine } from "react-icons/ri";
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 
 interface CreateStoryProps {
   onClose: () => void;
@@ -18,10 +21,21 @@ interface Content {
   mediaType: "image" | "video" | "text";
 }
 
+interface Emoji {
+  native: string;
+}
+
 const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
   const [caption, setCaption] = useState("");
   const [media, setMedia] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  const handleEmojiSelect = (emoji: Emoji) => {
+    setCaption(prev => prev + emoji.native);
+    setShowEmojiPicker(false);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,10 +46,10 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
 
     if (media) {
       if (
-        !/(image\/(jpg|jpeg|png|gif|webp))|(video\/(mp4|mov))/.test(media.type)
+        !/(image\/(jpg|jpeg|png|gif|webp|avif))|(video\/(mp4|mov))/.test(media.type)
       ) {
         toast.error(
-          "Please upload a supported image (jpg, jpeg, png, gif) or video (mp4, mov) file."
+          "Please upload a supported image (jpg, jpeg, png, gif, webp, avif) or video (mp4, mov) file."
         );
         return;
       }
@@ -135,7 +149,7 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-[#ffffff9b] bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-[#ffffff9b] bg-opacity-50 flex items-center justify-center z-10004">
       <div
         style={{ textAlign: "left" }}
         className="relative w-[470px] h-[450px] text-left overflow-hidden rounded-[20px] border-2 border-[#611DD0] bg-white p-4 cursor-pointer hover:border-[#a679ee] transition-colors"
@@ -162,7 +176,7 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
               <h2 className="text-[#611DD0] text-sm font-medium">Photos</h2>
               <input
                 type="file"
-                accept="image/*"
+                accept="image/*,.avif"
                 style={{ backgroundColor: "#fff" }}
                 onChange={(e) => setMedia(e.target.files?.[0] || null)}
                 className="flex-1 text-center text-sm border border-gray-300 rounded p-1"
@@ -181,14 +195,40 @@ const CreateStory = ({ onClose, onSave, userId }: CreateStoryProps) => {
                 disabled={loading}
               />
             </div>
-            <div className="flex items-center gap-2 w-full">
+            <div className="flex items-center gap-2 w-full relative">
               <h2 className="text-[#611DD0] text-sm font-medium">Message</h2>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                className="w-full h-20 p-2 border border-gray-300 rounded text-center resize-none text-sm"
-                disabled={loading}
-              />
+              <div className="flex-1 relative">
+                <textarea
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  className="w-full h-20 p-2 pr-10 border border-gray-300 rounded text-center resize-none text-sm"
+                  disabled={loading}
+                  placeholder="Add a caption..."
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="absolute right-2 top-2 text-[#611DD0] hover:text-[#4a0d8a] transition-colors"
+                  disabled={loading}
+                >
+                  <RiEmotionHappyLine size={20} />
+                </button>
+                
+                {showEmojiPicker && (
+                  <div
+                    ref={emojiPickerRef}
+                    className="absolute top-12 right-0 z-[9999]"
+                  >
+                    <Picker
+                      data={data}
+                      onEmojiSelect={handleEmojiSelect}
+                      theme="light"
+                      previewPosition="none"
+                      skinTonePosition="none"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 

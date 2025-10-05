@@ -1,21 +1,32 @@
 // src/components/Message/ChatList.tsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { RiMore2Fill, RiRefreshLine, RiErrorWarningLine } from "react-icons/ri";
+import React, { useEffect, useRef, useState,  } from "react";
+import { RiMore2Fill, RiRefreshLine, RiErrorWarningLine, RiSearchLine, RiCloseLine } from "react-icons/ri";
 import { useSelector } from "react-redux";
 import defaultAvatar from "../../../public/images/default.jpg";
 import type { Chat } from "./Message";
 import type { RootState } from "../../redux/store";
 import { toast } from "react-toastify";
 import { useGetUsersForChatListQuery } from "../../services/messageApi";
+import axiosClient from "../../api/axiosClient";
+import { socketService } from "../../services/socketServices";
 
 interface ChatListProps {
   chats: Chat[];
   activeChatId?: string;
   onSelectChat: (chatId: string) => void;
-  onOpenSearch: () => void;
+  onOpenSearch?: () => void;
+  onStartChat?: (user: { id: string; username: string; fullname: string; profilePicture: string }) => void;
   isConnected: boolean;
   hasError?: boolean;
   onlineUsers?: string[];
+}
+
+interface Connection {
+  _id: string;
+  username: string;
+  fullname: string;
+  profilePicture: string;
+  isOnline?: boolean;
 }
 
 interface User {
@@ -35,17 +46,26 @@ const ChatList: React.FC<ChatListProps> = ({
   chats,
   activeChatId,
   onSelectChat,
-  onOpenSearch,
+  // onOpenSearch,
+  onStartChat,
   isConnected,
   hasError = false,
-  onlineUsers = [],
+  // onlineUsers = [],
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userState = useSelector((state: RootState) => state.user);
   const profilePicture = userState.profilePicture;
   const username = userState.username;
   const fullname = userState.fullname;
-  const currentUserId = userState._id;
+  // const currentUserId = userState._id;
+  
+  // Search state
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [filteredConnections, setFilteredConnections] = useState<Connection[]>([]);
+  const [loadingConnections, setLoadingConnections] = useState(false);
+  const [typingUsers, setTypingUsers] = useState<Map<string, boolean>>(new Map());
 
     // Use RTK Query instead of manual fetch
   const { 
@@ -258,8 +278,136 @@ const ChatList: React.FC<ChatListProps> = ({
   };
 
   const isUserOnline = (userId: string) => {
-    return onlineUsers.includes(userId);
+    // Find the user in the users list and check their isOnline status
+    const user = users.find(u => u.userId === userId);
+    return user?.isOnline || false;
   };
+
+  // Fetch user connections (followers + following)
+  const fetchConnections = async () => {
+    if (loadingConnections) return;
+    
+    setLoadingConnections(true);
+    try {
+      const token = localStorage.getItem("accessToken");
+      // Get all followers and following without backend filtering
+      const [followersResponse, followingResponse] = await Promise.all([
+        axiosClient.get(`/api/users/profile/connections?type=followers`, {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        axiosClient.get(`/api/users/profile/connections?type=following`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+      
+      console.log("Followers response:", followersResponse.data);
+      console.log("Following response:", followingResponse.data);
+      
+      const allConnections = [
+        ...(followersResponse.data.followers || []),
+        ...(followingResponse.data.following || [])
+      ];
+      
+      console.log("All connections:", allConnections);
+      
+      // Remove duplicates based on _id
+      const uniqueConnections = allConnections.filter((connection, index, self) => 
+        index === self.findIndex(c => c._id === connection._id)
+      );
+      
+      console.log("Unique connections:", uniqueConnections);
+      
+      setConnections(uniqueConnections);
+      setFilteredConnections(uniqueConnections);
+    } catch (error) {
+      console.error("Error fetching connections:", error);
+      toast.error("Failed to load connections");
+    } finally {
+      setLoadingConnections(false);
+    }
+  };
+
+  // Handle search input
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setFilteredConnections(connections);
+      return;
+    }
+    
+    const filtered = connections.filter(connection => 
+      connection.username.toLowerCase().includes(query.toLowerCase()) ||
+      connection.fullname.toLowerCase().includes(query.toLowerCase())
+    );
+    setFilteredConnections(filtered);
+  };
+
+  // Handle starting a chat with a connection
+  const handleStartChatWithConnection = (connection: Connection) => {
+    console.log("Starting chat with connection:", connection);
+    if (onStartChat) {
+      console.log("Calling onStartChat with:", {
+        id: connection._id,
+        username: connection.username,
+        fullname: connection.fullname,
+        profilePicture: connection.profilePicture
+      });
+      onStartChat({
+        id: connection._id,
+        username: connection.username,
+        fullname: connection.fullname,
+        profilePicture: connection.profilePicture
+      });
+    } else {
+      console.log("onStartChat is not available");
+    }
+    setShowSearch(false);
+    setSearchQuery("");
+  };
+
+  // Fetch connections when search is opened
+  useEffect(() => {
+    if (showSearch && connections.length === 0) {
+      fetchConnections();
+    }
+  }, [showSearch]);
+
+  // Listen for typing events
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleTypingEvent = (data: { userId: string; isTyping: boolean; receiverId?: string }) => {
+      console.log('ChatList received typing event:', data);
+      
+      // Find the conversation ID for this user
+      const conversation = users.find(user => user.userId === data.userId);
+      if (conversation) {
+        setTypingUsers(prev => {
+          const newMap = new Map(prev);
+          if (data.isTyping) {
+            newMap.set(conversation.id, true);
+            // Auto-clear typing indicator after 3 seconds
+            setTimeout(() => {
+              setTypingUsers(current => {
+                const updated = new Map(current);
+                updated.delete(conversation.id);
+                return updated;
+              });
+            }, 3000);
+          } else {
+            newMap.delete(conversation.id);
+          }
+          return newMap;
+        });
+      }
+    };
+
+    socketService.onUserTyping(handleTypingEvent);
+
+    return () => {
+      socketService.getSocket()?.off("userTyping", handleTypingEvent);
+    };
+  }, [isConnected, users]);
 
   // Loading skeleton component
   const ChatSkeleton = () => (
@@ -283,7 +431,7 @@ const ChatList: React.FC<ChatListProps> = ({
   );
 
   return (
-    <section className="hidden lg:flex flex-col bg-[#611DD0] text-white h-screen w-full md:w-[350px] border-r border-purple-300/30 rounded-l-2xl">
+    <section style={{textAlign: "left"}} className="hidden lg:flex flex-col bg-[#611DD0] text-white h-screen w-full md:w-[350px] border-r border-purple-300/30 rounded-l-2xl">
       {/* Header */}
       <header className="flex items-center justify-between p-4 sticky top-0 z-10 border-b border-purple-200/30 bg-[#611DD0]">
         <main className="flex items-center gap-3">
@@ -312,17 +460,17 @@ const ChatList: React.FC<ChatListProps> = ({
           </span>
         </main>
         <button
-          className="bg-white/80 w-[35px] h-[35px] p-2 flex items-center justify-center rounded-lg hover:bg-white transition-colors"
+          className=" w-[35px] h-[35px] p-2 flex items-center justify-center rounded-lg bg-white transition-colors"
           aria-label="More options"
-          onClick={() => {
-            localStorage.removeItem("chatSummaries");
-            localStorage.removeItem("messages");
-            localStorage.removeItem("activeChat");
-            localStorage.removeItem("currentConversationId");
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("userId");
-            window.location.href = "/login";
-          }}
+          // onClick={() => {
+          //   localStorage.removeItem("chatSummaries");
+          //   localStorage.removeItem("messages");
+          //   localStorage.removeItem("activeChat");
+          //   localStorage.removeItem("currentConversationId");
+          //   localStorage.removeItem("accessToken");
+          //   localStorage.removeItem("userId");
+          //   window.location.href = "/login";
+          // }}
         >
           <RiMore2Fill color="#611DD0" className="w-6 h-6" />
         </button>
@@ -350,9 +498,9 @@ const ChatList: React.FC<ChatListProps> = ({
               </button>
             )}
             <button
-              onClick={onOpenSearch}
+              onClick={() => setShowSearch(!showSearch)}
               className="px-3 py-1 text-sm bg-white/20 rounded-lg hover:bg-white/30 transition flex items-center gap-2"
-              aria-label="Open search"
+              aria-label="Search connections"
               disabled={usersLoading}
             >
               <span>Search</span>
@@ -365,6 +513,80 @@ const ChatList: React.FC<ChatListProps> = ({
           </div>
         </header>
       </div>
+
+      {/* Search Interface */}
+      {showSearch && (
+        <div className="mx-4 mt-2 mb-3">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search your connections..."
+              className="w-full px-4 py-2 pl-10 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/30"
+              autoFocus
+            />
+            <RiSearchLine className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/60" />
+            <button
+              onClick={() => {
+                setShowSearch(false);
+                setSearchQuery("");
+              }}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white/60 hover:text-white"
+            >
+              <RiCloseLine className="w-4 h-4" />
+            </button>
+          </div>
+          
+          {/* Search Results */}
+          <div className="mt-3 max-h-60 overflow-y-auto">
+            {loadingConnections ? (
+              <div className="text-center py-4 text-white/60">
+                Loading connections...
+              </div>
+            ) : filteredConnections.length > 0 ? (
+              filteredConnections.map((connection) => (
+                <div
+                  key={connection._id}
+                  onClick={() => handleStartChatWithConnection(connection)}
+                  className="flex items-center gap-3 p-3 hover:bg-white/10 rounded-lg cursor-pointer transition-colors"
+                >
+                  <div className="relative">
+                    <img
+                      src={connection.profilePicture || defaultAvatar}
+                      alt={connection.fullname}
+                      className="w-8 h-8 rounded-full object-cover"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = defaultAvatar;
+                      }}
+                    />
+                    {connection.isOnline && (
+                      <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-400 rounded-full border border-[#611DD0]" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white truncate">
+                      {connection.fullname}
+                    </p>
+                    <p className="text-xs text-white/60 truncate">
+                      @{connection.username}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : searchQuery ? (
+              <div className="text-center py-4 text-white/60">
+                No connections found for "{searchQuery}"
+              </div>
+            ) : (
+              <div className="text-center py-4 text-white/60">
+                {connections.length === 0 ? "No connections found" : "Type to search your connections"}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error Banner */}
       {(hasError || usersError) && (
@@ -429,7 +651,7 @@ const ChatList: React.FC<ChatListProps> = ({
                   Start a new chat using the search button
                 </p>
                 <button
-                  onClick={onOpenSearch}
+                  onClick={() => setShowSearch(true)}
                   className="mt-4 px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition"
                   disabled={!isConnected}
                 >
@@ -466,7 +688,7 @@ const ChatList: React.FC<ChatListProps> = ({
                       target.src = defaultAvatar;
                     }}
                   />
-                  {isConnected && isUserOnline(user.userId) && (
+                  {isUserOnline(user.userId) && (
                     <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-[#611DD0]" />
                   )}
                 </div>
@@ -483,16 +705,20 @@ const ChatList: React.FC<ChatListProps> = ({
                   </div>
                   <div className="flex items-center justify-between mt-1">
                     <p className="text-sm opacity-90 truncate">
-                      {user.lastMessage}
+                      {typingUsers.get(user.id) ? (
+                        <span className="text-purple-300 animate-pulse italic">
+                          typing...
+                        </span>
+                      ) : (
+                        user.lastMessage
+                      )}
                     </p>
                     {getUnreadBadge(user.unreadCount)}
                   </div>
                 </div>
               </div>
 
-              {user.id === activeChatId && (
-                <div className="w-2 h-2 bg-green-400 rounded-full ml-2 animate-pulse" />
-              )}
+              {/* Removed active chat indicator */}
             </div>
           ))
         )}

@@ -77,24 +77,36 @@ export const messageApi = createApi({
 
     getMessages: builder.query<MessagesResponse, { receiverId: string }>({
       query: ({ receiverId }) => `/messages/${receiverId}`,
-      providesTags: (result, error, { receiverId }) => [
+      providesTags: (_result, _error, { receiverId }) => [
         { type: "Messages", id: receiverId },
       ],
     }),
 
     sendMessage: builder.mutation<
       MessageType,
-      { receiverId: string; content: string }
+      { conversationId: string; content: string }
     >({
-      query: ({ receiverId, content }) => ({
-        url: `/messages/send/${receiverId}`,
+      query: ({ conversationId, content }) => ({
+        url: `/messages/send/${conversationId}`,
         method: "POST",
         body: { content },
       }),
-      invalidatesTags: (result, error, { receiverId }) => [
-        { type: "Messages", id: receiverId },
+      invalidatesTags: (_result, _error, { conversationId }) => [
+        { type: "Messages", id: conversationId },
         "ChatList",
       ],
+    }),
+
+    createOrGetConversation: builder.mutation<
+      { success: boolean; conversation: { _id: string; participants: string[] } },
+      { participantId: string }
+    >({
+      query: ({ participantId }) => ({
+        url: "/conversations",
+        method: "POST",
+        body: { participantId },
+      }),
+      invalidatesTags: ["ChatList"],
     }),
 
     getUserById: builder.query<UserResponse, string>({
@@ -103,7 +115,7 @@ export const messageApi = createApi({
     }),
 
     deleteMessage: builder.mutation<
-      { success: boolean; message: string },
+      { success: boolean; message: string; hardDelete?: boolean },
       string
     >({
       query: (messageId) => ({
@@ -121,6 +133,18 @@ export const messageApi = createApi({
         url: `/messages/edit/${messageId}`,
         method: "PUT",
         body: { content },
+      }),
+      invalidatesTags: ["Messages", "ChatList"],
+    }),
+
+    bulkDeleteMessages: builder.mutation<
+      { success: boolean; message: string; deletedCount: number },
+      { messageIds: string[] }
+    >({
+      query: ({ messageIds }) => ({
+        url: `/messages/bulk`,
+        method: "DELETE",
+        body: { messageIds },
       }),
       invalidatesTags: ["Messages", "ChatList"],
     }),
@@ -152,6 +176,14 @@ export const messageApi = createApi({
       },
       invalidatesTags: ["Messages", "ChatList"],
     }),
+
+    getUnreadMessageCount: builder.query<
+      { success: boolean; count: number },
+      void
+    >({
+      query: () => "/messages/unread-count",
+      providesTags: ["ChatList"],
+    }),
   }),
 });
 
@@ -162,6 +194,9 @@ export const {
   useGetUserByIdQuery,
   useDeleteMessageMutation,
   useEditMessageMutation,
+  useBulkDeleteMessagesMutation,
   useMarkConversationAsSeenMutation,
   useUploadMediaMutation,
+  useCreateOrGetConversationMutation,
+  useGetUnreadMessageCountQuery,
 } = messageApi;

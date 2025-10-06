@@ -3,9 +3,9 @@ import ChatList from "./ChatList";
 import ChatBox from "./ChatBox";
 import SearchModal from "./SearchModal";
 import type { MessageType, Receiver } from "../../data/messageSample";
-import { useGetMessagesQuery, useSendMessageMutation, useGetUsersForChatListQuery, useMarkConversationAsSeenMutation } from "../../services/messageApi";
+import { useGetMessagesQuery, useSendMessageMutation, useGetUsersForChatListQuery, useMarkConversationAsSeenMutation, useCreateOrGetConversationMutation } from "../../services/messageApi";
 import { useSelector, useDispatch } from "react-redux";
-import { setActiveChat, setCurrentConversationId } from "../../redux/slices/messageSlice";
+import { setActiveChat, setCurrentConversationId, decrementUnreadMessageCount } from "../../redux/slices/messageSlice";
 import type { RootState } from "../../redux/store";
 import { socketService } from "../../services/socketServices";
 import { skipToken } from "@reduxjs/toolkit/query";
@@ -56,6 +56,7 @@ const Message: React.FC = () => {
 
   const [sendMessageApi] = useSendMessageMutation();
   const [markConversationAsSeen] = useMarkConversationAsSeenMutation();
+  const [createOrGetConversation] = useCreateOrGetConversationMutation();
 
   // Load initial data from localStorage and sync with API data
   useEffect(() => {
@@ -173,38 +174,84 @@ const Message: React.FC = () => {
         }
 
         if (currentConversationId) {
-          socketService.joinConversation(currentConversationId);
         }
 
         // Message handlers
         const handleNewMessage = (message: MessageType) => {
           if (!isMounted) return;
           
-          console.log("Received new message via socket:", message);
+          console.log("📨 Received new message via socket:", {
+            id: message._id,
+            type: message.messageType,
+            sender: message.sender._id,
+            currentUser: userId,
+            content: message.messageType === 'text' ? message.content : `[${message.messageType}]`
+          });
           
           setMessages((prev) => {
-            // Check if message already exists (prevent duplicates)
-            const existingMessage = prev.find(m => 
-              m._id === message._id || 
-              (m._id?.startsWith('temp-') && m.content === message.content && m.sender._id === message.sender._id)
+            // Check if this is a real message replacing a temporary one
+            const tempMessage = prev.find(m => 
+              m._id?.startsWith('temp-') && 
+              m.conversationId === message.conversationId && 
+              m.sender._id === message.sender._id && 
+              m.content === message.content && 
+              m.sender._id === message.sender._id &&
+              Math.abs(new Date(m.createdAt).getTime() - new Date(message.createdAt).getTime()) < 5000 // Within 5 seconds
             );
             
-            if (!existingMessage) {
+            if (tempMessage) {
+              // Replace temporary message with real one
+              console.log("Replacing temporary message:", tempMessage._id, "with real message:", message._id);
+              messageQueueRef.current.delete(tempMessage._id);
+              return prev.map(m => m._id === tempMessage._id ? message : m);
+            }
+            
+            // Check if message already exists (prevent duplicates)
+            const existingMessage = prev.find(m => m._id === message._id);
+            if (existingMessage) {
+              console.log("Message already exists, skipping:", message._id);
+              return prev;
+            }
+            
+            // For messages from other users, add them
+            if (message.sender._id !== userId) {
+              console.log("Adding new message from other user:", message._id);
               return [...prev, message];
             }
             
-            // Update status if it's a temporary message
-            if (existingMessage._id?.startsWith('temp-') && message._id && !message._id.startsWith('temp-')) {
-              return prev.map(m => 
-                m._id === existingMessage._id ? { ...message, _id: message._id } : m
-              );
+            // For own messages, handle differently based on message type
+            if (message.messageType === 'image' || message.messageType === 'video') {
+              // Media messages don't have temporary messages, so always add them
+              console.log("Adding own media message:", message._id, message.messageType);
+              return [...prev, message];
             }
             
+            // For text messages, only add if no temporary message exists (prevents duplicates)
+            console.log("Received own text message via socket, checking for duplicates:", message._id);
             return prev;
           });
 
-          // Refresh chat list to reflect latest message preview/time
-          try { refetchChatList(); } catch {}
+          // Update chat list immediately with new message info
+          const conversationId = message.conversationId || currentConversationId;
+          if (conversationId) {
+            setChatSummaries(prev => prev.map(chat => {
+              if (chat.id === conversationId) {
+                return {
+                  ...chat,
+                  lastMessage: message.content,
+                  time: message.createdAt,
+                  // Don't increment unread count for own messages
+                  unreadCount: message.sender._id === userId ? chat.unreadCount : (chat.unreadCount || 0) + 1
+                };
+              }
+              return chat;
+            }));
+          }
+
+          // Refresh chat list to reflect latest message preview/time from server
+          try { refetchChatList(); } catch(error: unknown) {
+            console.error("Failed to refresh chat list after new message", error);
+          }
         };
 
         const handleMessageStatusUpdate = (data: { messageId: string; status: string }) => {
@@ -228,13 +275,57 @@ const Message: React.FC = () => {
         socketService.onError(handleError);
 
         // Update UI on delete/edit events immediately
-        socketService.getSocket()?.on('messageDeleted', (data: { messageId: string; conversationId?: string }) => {
+        socketService.getSocket()?.on('messageDeleted', (data: { messageId: string; conversationId: string; lastMessage?: string; time?: string }) => {
           if (!isMounted) return;
+          console.log('Message deleted event received in Message.tsx:', data);
+          
+          // Remove deleted message from local state immediately
+          setMessages(prev => prev.filter(msg => msg._id !== data.messageId));
+          
+          // Update chat list with new last message if provided
+          if (data.lastMessage !== undefined && data.conversationId) {
+            setChatSummaries(prev => prev.map(chat => {
+              if (chat.id === data.conversationId) {
+                return {
+                  ...chat,
+                  lastMessage: data.lastMessage || "Message deleted",
+                  time: data.time || new Date().toISOString()
+                };
+              }
+              return chat;
+            }));
+          }
+          
+          // Refetch for server sync
           try { refetchMessages(); } catch {}
           try { refetchChatList(); } catch {}
         });
-        socketService.getSocket()?.on('messageEdited', () => {
+        
+        socketService.getSocket()?.on('messageEdited', (data: { messageId: string; content: string; conversationId: string; isEdited: boolean; editedAt: string }) => {
           if (!isMounted) return;
+          console.log('Message edited event received in Message.tsx:', data);
+          
+          // Update edited message in local state immediately
+          setMessages(prev => prev.map(msg => 
+            msg._id === data.messageId 
+              ? { ...msg, content: data.content, isEdited: data.isEdited, editedAt: data.editedAt }
+              : msg
+          ));
+          
+          // Update chat list with edited message content if it's the latest message
+          setChatSummaries(prev => prev.map(chat => {
+            if (chat.id === data.conversationId) {
+              // Only update if this was likely the last message (simplified check)
+              return {
+                ...chat,
+                lastMessage: data.content,
+                time: data.editedAt
+              };
+            }
+            return chat;
+          }));
+          
+          // Refetch for server sync
           try { refetchMessages(); } catch {}
           try { refetchChatList(); } catch {}
         });
@@ -253,12 +344,43 @@ const Message: React.FC = () => {
           }
         });
 
+        // Listen for chat list updates (new messages from other users)
+        socketService.getSocket()?.on('chatListUpdate', (data: { conversationId: string; lastMessage: string; time: string; senderId: string; senderName: string }) => {
+          if (!isMounted) return;
+          console.log('Received chat list update:', data);
+          
+          // Skip updates for current user's own messages
+          if (data.senderId === userId) {
+            console.log("Skipping chat list update for own message");
+            return;
+          }
+          
+          // Update chat summaries with new message info and increment unread count
+          setChatSummaries(prev => prev.map(chat => {
+            if (chat.id === data.conversationId) {
+              return {
+                ...chat,
+                lastMessage: data.lastMessage,
+                time: data.time,
+                unreadCount: (chat.unreadCount || 0) + 1 // Increment unread count
+              };
+            }
+            return chat;
+          }));
+          
+          // Show toast notification for new message from other users only
+          toast.info(`💬 New message from ${data.senderName}`);
+          
+          // Refetch chat list to get updated data
+          refetchChatList().catch(error => console.error('Failed to refresh chat list:', error));
+        });
+
       } catch (error) {
         console.error("Failed to connect socket:", error);
         if (isMounted) {
           toast.error("Failed to establish real-time connection");
         }
-      }
+      };
     };
 
     initializeSocket();
@@ -279,38 +401,45 @@ const Message: React.FC = () => {
       console.log("Loaded messages from API:", messagesResponse.messages.length);
       setMessages(messagesResponse.messages);
       
-      // Mark conversation as seen using API call
+      // Mark conversation as seen using API call (with delay to allow user to actually see messages)
       if (currentConversationId) {
         const unseenMessages = messagesResponse.messages.filter(msg => 
           msg.sender._id !== userId && msg.status !== 'seen'
         );
         
         if (unseenMessages.length > 0) {
-          // Use API call to mark conversation as seen
-          markConversationAsSeen(currentConversationId)
-            .unwrap()
-            .then((result) => {
-              console.log(`Marked ${result.updatedCount} messages as seen`);
-              
-              // Update local chat list to reflect seen messages
-              setChatSummaries(prev =>
-                prev.map(chat =>
-                  chat.id === currentConversationId ? { ...chat, unreadCount: 0 } : chat
-                )
-              );
-              
-              // Refetch chat list to get updated counts from server
-              setTimeout(() => {
-                refetchChatList();
-              }, 500);
-            })
-            .catch((error) => {
-              console.error("Failed to mark conversation as seen:", error);
-              // Fallback to socket method
-              unseenMessages.forEach(msg => {
-                socketService.markMessageAsSeen(msg._id, currentConversationId);
+          // Delay marking as seen to allow user to actually read the messages
+          setTimeout(() => {
+            markConversationAsSeen(currentConversationId)
+              .unwrap()
+              .then((result) => {
+                console.log(`Marked ${result.updatedCount} messages as seen`);
+                
+                // Decrement unread message count by the number of messages marked as seen
+                for (let i = 0; i < result.updatedCount; i++) {
+                  dispatch(decrementUnreadMessageCount());
+                }
+                
+                // Update local chat list to reflect seen messages
+                setChatSummaries(prev =>
+                  prev.map(chat =>
+                    chat.id === currentConversationId ? { ...chat, unreadCount: 0 } : chat
+                  )
+                );
+                
+                // Refetch chat list to get updated counts from server
+                setTimeout(() => {
+                  refetchChatList();
+                }, 500);
+              })
+              .catch((error) => {
+                console.error("Failed to mark conversation as seen:", error);
+                // Fallback to socket method
+                unseenMessages.forEach(msg => {
+                  socketService.markMessageAsSeen(msg._id, currentConversationId);
+                });
               });
-            });
+          }, 2000); // 2 second delay to allow user to see the messages
         }
       }
     }
@@ -330,41 +459,56 @@ const Message: React.FC = () => {
       return;
     }
 
-    const existingChat = chatSummaries.find((c) => c.id === userChatId);
     const chatName = user.fullname || user.username || user.firstName || "Unknown User";
     const profilePicture = user.profilePicture || `https://ui-avatars.com/api/?name=${encodeURIComponent(chatName)}&background=611DD0&color=fff`;
     
-    if (!existingChat) {
-      const userData: Receiver = {
-        _id: userChatId,
-        username: user.username,
-        profilePicture: user.profilePicture
-      };
+    try {
+      // First, create or get the conversation using RTK Query
+      const result = await createOrGetConversation({
+        participantId: userChatId
+      }).unwrap();
+
+      const conversationId = result.conversation._id;
+
+      // Check if chat already exists in our local state
+      const existingChat = chatSummaries.find((c) => c.id === conversationId);
       
-      const newChat: Chat = {
-        id: userChatId,
-        userId: userChatId,
-        name: chatName,
-        lastMessage: "Start a conversation",
-        time: new Date().toISOString(),
-        image: profilePicture,
-        profilePicture: profilePicture,
-        unreadCount: 0,
-        userData: userData
-      };
+      if (!existingChat) {
+        const userData: Receiver = {
+          _id: userChatId,
+          username: user.username,
+          profilePicture: user.profilePicture
+        };
+        
+        const newChat: Chat = {
+          id: conversationId, // Use conversation ID, not user ID
+          userId: userChatId,
+          name: chatName,
+          lastMessage: "Start a conversation",
+          time: new Date().toISOString(),
+          image: profilePicture,
+          profilePicture: profilePicture,
+          unreadCount: 0,
+          userData: userData
+        };
+        
+        setChatSummaries((prev) => [newChat, ...prev]);
+      }
       
-      setChatSummaries((prev) => [newChat, ...prev]);
+      dispatch(setActiveChat(chatName));
+      dispatch(setCurrentConversationId(conversationId)); // Use conversation ID
+      setIsSearchOpen(false);
+      
+      setTimeout(() => {
+        refetchMessages();
+        refetchChatList();
+      }, 100);
+      
+    } catch (error) {
+      console.error('Error starting chat:', error);
+      toast.error('Failed to start conversation. Please try again.');
     }
-    
-    dispatch(setActiveChat(chatName));
-    dispatch(setCurrentConversationId(userChatId));
-    setIsSearchOpen(false);
-    
-    setTimeout(() => {
-      refetchMessages();
-      refetchChatList();
-    }, 100);
-  }, [chatSummaries, dispatch, refetchMessages, refetchChatList]);
+  }, [chatSummaries, dispatch, refetchMessages, refetchChatList, token, createOrGetConversation]);
 
   // FIXED: Prevent duplicate message sending and ensure instant UI
   const handleSendMessage = useCallback(async (msg: Omit<MessageType, "_id">) => {
@@ -396,13 +540,13 @@ const Message: React.FC = () => {
         // Socket server emits "newMessage" with persisted message; UI already shows optimistic
       } else {
         const result = await sendMessageApi({ 
-          receiverId: currentConversationId, 
+          conversationId: currentConversationId, 
           content: msg.content
         }).unwrap();
         setMessages(prev => prev.map(m => m._id === tempId ? { ...result, status: "sent" } as any : m));
         messageQueueRef.current.delete(tempId);
       }
-    } catch (error) {
+    } catch  {
       setMessages(prev => prev.map(m => m._id === tempId ? { ...m, status: "failed" } : m));
       toast.error("Failed to send message");
     } finally {
@@ -429,7 +573,7 @@ const Message: React.FC = () => {
         });
       } else {
         const result = await sendMessageApi({
-          receiverId: currentConversationId,
+          conversationId: currentConversationId,
           content: failedMessage.content
         }).unwrap();
         
@@ -459,6 +603,8 @@ const Message: React.FC = () => {
       dispatch(setCurrentConversationId(null));
       return;
     }
+    
+    // Don't decrement here - wait for messages to be actually marked as seen
     
     // First check in chatSummaries (local + API data)
     const localChat = chatSummaries.find(c => c.id === chatId);
@@ -528,7 +674,7 @@ const Message: React.FC = () => {
             chats={chatSummaries}
             activeChatId={currentConversationId ?? undefined}
             onSelectChat={handleSelectChat}
-            onOpenSearch={() => setIsSearchOpen(true)}
+            onStartChat={handleStartChat}
             isConnected={isSocketConnected}
           />
           <ChatBox

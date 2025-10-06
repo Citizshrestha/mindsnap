@@ -2,16 +2,17 @@
 import express from "express";
 import multer from "multer";
 import fs from "fs";
-import { 
-  sendMessage, 
-  getMessages, 
-  getUsersForChatList, 
-  addReaction, 
-  pinMessage, 
-  markConversationAsSeen, 
-  deleteMessage, 
-  uploadMedia, 
-  editMessage 
+import {
+  sendMessage,
+  getMessages,
+  getUsersForChatList,
+  deleteMessage,
+  editMessage,
+  bulkDeleteMessages,
+  addReaction,
+  pinMessage,
+  uploadMedia,
+  markConversationAsSeen,
 } from "../controllers/messageController.js";
 import protect from "../middleware/authMiddleware.js";
 
@@ -62,8 +63,11 @@ router.post("/upload/:conversationId", protect, upload.single('media'), uploadMe
 router.post("/mark-seen/:conversationId", protect, markConversationAsSeen);
 router.post("/send/:conversationId", protect, sendMessage);
 
-// Edit route with specific path to avoid conflicts
+// Edit message
 router.put("/edit/:messageId", protect, editMessage);
+
+// Bulk delete messages
+router.delete("/bulk", protect, bulkDeleteMessages);
 
 // Parameterized routes should come last
 router.delete("/:messageId", protect, deleteMessage);

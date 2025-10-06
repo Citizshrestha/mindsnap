@@ -1,22 +1,22 @@
 import { FiBell, FiHome, FiSearch } from "react-icons/fi";
 import { MdPerson3, MdPersonAdd } from "react-icons/md";
 import { useNavigate, useLocation, Link } from "react-router-dom";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import axiosClient from "../../api/axiosClient";
 import { toast } from "react-toastify";
 import { useSelector, useDispatch } from "react-redux";
-import { setProfilePicture, setUsername } from "../../redux/slices/userSlice";
+import { setProfilePicture, setUsername, setGender } from "../../redux/slices/userSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
 import Loader from "../Loader";
 import Notification from "../notification/Notification";
 import logoImg from "../../../public/images/mindsnap logo.png";
 import settingImg from "../../../public/images/settings.png";
 import defaultAvatar from "../../../public/images/default.jpg";
-import type { Notification as SocketNotification } from "../../services/socketServices";
-import { socketService } from "../../services/socketServices";
-import { sampleNotifications } from "../../data/sampleNotification";
+import femaleAvatar from "../../../public/images/Female Avatar.webp";
+import maleAvatar from "../../../public/images/Male Avatar.png";
 import "./header.css";
 import { setUnreadCount } from "../../redux/slices/notificationSlice";
+import { useSocketNotifications } from "../../hooks/useSocketNotifications";
 
 interface CloudinaryUploadResponse {
   secure_url: string;
@@ -35,6 +35,7 @@ interface UserProfileResponse {
   data: {
     username: string;
     profilePicture: string;
+    gender?: string;
     [key: string]: unknown;
   };
 }
@@ -47,19 +48,19 @@ interface SearchUser {
   isFollowing?: boolean;
 }
 
-interface HeaderProps {
-  unreadCount: number;
-}
-
-const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
+const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
   const {
     username: currentUsername,
     profilePicture,
-    _id: userId,
+    gender,
   } = useSelector((state: RootState) => state.user);
+  
+  // Use the unreadCount from Redux store directly
+  const unreadCount = useSelector((state: RootState) => state.notification.unreadCount);
+
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
@@ -67,16 +68,24 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
   const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [activeLink, setActiveLink] = useState<string | null>(null);
-  const [loggedInUsername, setLoggedInUsername] = useState<string | null>(
-    localStorage.getItem("username") || null
-  );
   const [showNotification, setShowNotification] = useState(false);
   const [hasImageError, setHasImageError] = useState(false);
-  const [localUnreadCount, setLocalUnreadCount] = useState(initialUnreadCount);
 
-  const isValidObjectId = (id: string): boolean => {
-    return /^[0-9a-fA-F]{24}$/.test(id);
+  // Helper function to get appropriate fallback avatar based on gender
+  const getFallbackAvatar = () => {
+    // Check localStorage first if Redux state is empty
+    const userGender = gender || localStorage.getItem("gender");
+    
+    if (userGender === "Female") {
+      return femaleAvatar;
+    } else if (userGender === "Male") {
+      return maleAvatar;
+    }
+    return defaultAvatar; // Default for "None", empty, or any other value
   };
+
+  // Use the socket notification hook, handles real-time notifications
+  useSocketNotifications();
 
   // Fetch user data on mount
   useEffect(() => {
@@ -104,8 +113,10 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
               response.data.profilePicture
             );
           }
-          setLoggedInUsername(response.data.username);
-          localStorage.setItem("username", response.data.username);
+          // Dispatch gender if available
+          if (response.data.gender) {
+            dispatch(setGender(response.data.gender));
+          }
         }
       } catch (err) {
         const message =
@@ -122,146 +133,14 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
     };
 
     fetchUserData();
-
     return () => {
       isMounted = false;
     };
   }, [dispatch]);
 
-  useEffect(() => {
-    const fetchAndCombineNotifications = async () => {
-      try {
-        const token = localStorage.getItem("accessToken");
-        if (!token) return;
+  // Notifications are now handled by useSocketNotifications hook
 
-        const response = await axiosClient.get("/api/notifications", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (response.data.success) {
-          // Combine sample notifications and DB notifications
-          const dbNotifications = response.data.notifications || [];
-          const combinedNotifications = [
-            ...sampleNotifications,
-            ...dbNotifications,
-          ].filter(
-            (notif) =>
-              notif.sender &&
-              notif.sender._id &&
-              notif.sender.username &&
-              notif.sender.profilePicture
-          );
-
-          // Check follow status ONLY for valid MongoDB ObjectIds
-          const updatedNotifications = await Promise.all(
-            combinedNotifications.map(async (notif) => {
-              if (
-                notif.type === "follow" &&
-                notif.sender._id &&
-                isValidObjectId(notif.sender._id)
-              ) {
-                try {
-                  const followRes = await axiosClient.get(
-                    `/api/users/${notif.sender._id}/follow-status`,
-                    {
-                      headers: { Authorization: `Bearer ${token}` },
-                    }
-                  );
-                  return {
-                    ...notif,
-                    isFollowing: followRes.data.isFollowing || false,
-                  };
-                } catch (followError) {
-                  console.warn(
-                    `Failed to check follow status for user ${notif.sender._id}:`,
-                    followError
-                  );
-                  return { ...notif, isFollowing: false };
-                }
-              }
-              // For sample notifications with invalid IDs, just return as-is
-              return notif;
-            })
-          );
-
-          // Sort by date (newest first)
-          updatedNotifications.sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-          );
-
-          // Set unread count
-          const unreadCount = updatedNotifications.filter(
-            (n) => !n.read
-          ).length;
-          dispatch(setUnreadCount(unreadCount));
-          setLocalUnreadCount(unreadCount);
-          localStorage.setItem("unreadCount", unreadCount.toString());
-        } else {
-          throw new Error("Failed to fetch notifications");
-        }
-      } catch (err) {
-        console.error("Error fetching notifications:", err);
-        // fallback: count unread in sampleNotifications only
-        const unreadCount = sampleNotifications.filter((n) => !n.read).length;
-        dispatch(setUnreadCount(unreadCount));
-        setLocalUnreadCount(unreadCount);
-        localStorage.setItem("unreadCount", unreadCount.toString());
-      }
-    };
-
-    fetchAndCombineNotifications();
-  }, [dispatch]);
-
-  const handleNewNotification = useCallback(
-    (notification: SocketNotification) => {
-      if (!notification.read) {
-        setLocalUnreadCount((prev) => {
-          const newCount = prev + 1;
-          dispatch(setUnreadCount(newCount));
-          localStorage.setItem("unreadCount", newCount.toString());
-          return newCount;
-        });
-      }
-    },
-    [dispatch]
-  );
-
-  useEffect(() => {
-    if (!userId || !localStorage.getItem("accessToken")) return;
-
-    const connectSocket = async () => {
-      try {
-        await socketService.connect(
-          localStorage.getItem("accessToken")!,
-          userId
-        );
-        socketService.joinUserRoom(userId);
-        socketService.onNotification(handleNewNotification);
-      } catch (err) {
-        console.error("Socket connection error:", err);
-        toast.error("Invalid session. Please log in again.");
-      }
-    };
-
-    connectSocket();
-
-    return () => {
-      socketService.offNotification(handleNewNotification);
-      if (socketService.isSocketConnected()) {
-        socketService.disconnect();
-      }
-    };
-  }, [userId, handleNewNotification, navigate]);
-
-  // Sync localUnreadCount with Redux store
-  useEffect(() => {
-    setLocalUnreadCount(initialUnreadCount);
-  }, [initialUnreadCount]);
-
-  const handleImageUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -287,7 +166,6 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
       );
       formData.append("folder", "mindsnap/profile_pictures");
 
-      // FIXED: Use correct Cloudinary URL
       const cloudinaryUrl = `https://api.cloudinary.com/v1_1/${
         import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
       }/image/upload`;
@@ -632,19 +510,15 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
             className="cursor-pointer text-[#FFD700]"
             onClick={() => setShowNotification(true)}
           />
-          {localUnreadCount > 0 && (
+          {unreadCount > 0 && (
             <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center transform translate-x-2 -translate-y-1">
-              {localUnreadCount}
+              {unreadCount}
             </span>
           )}
           {showNotification && (
             <Notification
               onClose={() => setShowNotification(false)}
-              onUnreadCountChange={(count) => {
-                setLocalUnreadCount(count);
-                dispatch(setUnreadCount(count));
-                localStorage.setItem("unreadCount", count.toString());
-              }}
+              onUnreadCountChange={(count) => dispatch(setUnreadCount(count))}
             />
           )}
         </div>
@@ -658,28 +532,31 @@ const Header: React.FC<HeaderProps> = ({ unreadCount: initialUnreadCount }) => {
                 src={transformedUrl}
                 alt="profileIMG"
                 onError={(e) => {
+                  const fallbackAvatar = getFallbackAvatar();
                   console.error(
-                    "Image load failed, falling back to default:",
-                    transformedUrl
+                    "Image load failed, falling back to gender-based avatar:",
+                    transformedUrl,
+                    "Gender:", gender,
+                    "Fallback:", fallbackAvatar
                   );
                   setHasImageError(true);
-                  e.currentTarget.src = defaultAvatar;
-                  dispatch(setProfilePicture(defaultAvatar));
-                  localStorage.setItem("profilePicture", defaultAvatar);
+                  e.currentTarget.src = fallbackAvatar;
+                  dispatch(setProfilePicture(fallbackAvatar));
+                  localStorage.setItem("profilePicture", fallbackAvatar);
                 }}
               />
             )}
             <input
               type="file"
               accept="image/*"
-              onChange={handleImageUpload}
               className="absolute top-0 left-0 h-12 w-12 opacity-0 cursor-pointer"
+              onChange={handleImageUpload}
               disabled={loading || initialLoading}
               title="Upload Profile Picture"
             />
           </div>
           <h3 className="text-sm font-medium">
-            {loggedInUsername || (initialLoading ? "Loading..." : "User")}
+            {currentUsername || (initialLoading ? "Loading..." : "User")}
           </h3>
         </div>
       </div>

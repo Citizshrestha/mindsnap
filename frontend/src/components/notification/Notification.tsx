@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { IoCloseSharp } from "react-icons/io5";
-import { socketService } from "../../services/socketServices";
+import { socketService, type NotificationType } from "../../services/socketServices";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -48,6 +48,27 @@ interface NotificationProps {
 // Helper function to validate MongoDB ObjectId
 const isValidObjectId = (id: string): boolean => {
   return /^[0-9a-fA-F]{24}$/.test(id);
+};
+
+// Helper function to convert NotificationType to component Notification type
+const convertSocketNotification = (socketNotification: NotificationType): Notification => {
+  return {
+    _id: socketNotification._id,
+    sender: socketNotification.relatedUser ? {
+      _id: socketNotification.relatedUser._id,
+      username: socketNotification.relatedUser.username,
+      profilePicture: socketNotification.relatedUser.profilePicture || ""
+    } : undefined,
+    type: socketNotification.type as "like" | "comment" | "follow" | "tag" | "message" | "follow_back",
+    targetType: "Post" as "Post" | "Comment" | "Message" | "Story" | "Profile", // Default, should be from backend
+    targetId: socketNotification.post ? { _id: socketNotification.post._id } : { _id: "" },
+    createdAt: socketNotification.createdAt,
+    read: socketNotification.read,
+    message: socketNotification.message,
+    action: socketNotification.action,
+    isFollowing: socketNotification.isFollowing,
+    reactionType: socketNotification.reactionType
+  };
 };
 
 const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChange }) => {
@@ -232,8 +253,11 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
   useEffect(() => {
     fetchNotifications();
 
-    const handleNewNotification = (notification: Notification) => {
-      console.log("Received new notification via socket:", notification);
+    const handleNewNotification = (socketNotification: NotificationType) => {
+      console.log("Received new notification via socket:", socketNotification);
+      
+      // Convert socket notification to component notification type
+      const notification = convertSocketNotification(socketNotification);
       
       // Add notification to Redux store
       dispatch(addNotification(notification));
@@ -265,11 +289,15 @@ const Notification: React.FC<NotificationProps> = ({ onClose, onUnreadCountChang
     socketService.onNotification(handleNewNotification);
 
     // Listen for real-time message notifications
-    const handleNewMessageNotification = (notification: Notification) => {
-      console.log("Received new message notification:", notification);
+    const handleNewMessageNotification = (socketNotification: NotificationType) => {
+      console.log("Received new message notification:", socketNotification);
+      
+      // Convert socket notification to component notification type
+      const notification = convertSocketNotification(socketNotification);
       
       // Add notification to Redux store
       dispatch(addNotification(notification));
+      
       
       // Show toast notification for message
       if (notification.type === "message") {

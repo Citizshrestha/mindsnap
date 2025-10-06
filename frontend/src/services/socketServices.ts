@@ -1,41 +1,39 @@
 // src/services/socketServices.ts
-
-
-import { io, Socket } from "socket.io-client";
 import axios from "axios";
 import { toast } from "react-toastify";
+import { io, Socket } from "socket.io-client";
+import type { MessageType } from "../data/messageSample";
 
 export interface TargetId {
   _id: string;
   [key: string]: string | number | boolean | undefined;
 }
 
-export interface Notification {
+export interface NotificationType {
   _id: string;
-  sender?: { // Make sender optional here too
+  type: string;
+  // message: string;
+  createdAt: string;
+  // read: boolean;
+  user: {
     _id: string;
     username: string;
-    profilePicture: string;
+    profilePicture?: string;
   };
-  type: "like" | "comment" | "follow" | "tag" | "message" | "follow_back";
-  targetType: "Post" | "Comment" | "Message" | "Story" | "Profile";
-  targetId: TargetId;
-  createdAt: string;
+  relatedUser?: {
+    _id: string;
+    username: string;
+    profilePicture?: string;
+  };
+  post?: {
+    _id: string;
+    content: string;
+  };
   read: boolean;
   message: string;
   action?: string;
   isFollowing?: boolean;
   reactionType?: string;
-}
-
-export interface MessageType {
-  _id: string;
-  content: string;
-  messageType: "text";
-  createdAt: string;
-  status: string;
-  sender: { _id: string; username?: string; profilePicture?: string };
-  receiver: { _id: string; username?: string };
 }
 
 interface SocketServiceOptions {
@@ -110,7 +108,7 @@ class SocketService {
 
         if (error.message.includes("Invalid authentication token")) {
           try {
-            console.log("Attempting to refresh token...");
+            // console.log("Attempting to refresh token...");
             const response = await axios.post(
               `${import.meta.env.VITE_API_BASE_URL || "http://localhost:5000"}/api/auth/refresh`,
               {},
@@ -118,7 +116,7 @@ class SocketService {
             );
             const newToken = response.data.accessToken;
             localStorage.setItem("accessToken", newToken);
-            console.log("Token refreshed successfully:", newToken.substring(0, 20) + "...");
+            // console.log("Token refreshed successfully:", newToken.substring(0, 20) + "...");
 
             // Update auth token and reconnect
             this.socket!.auth = { token: newToken };
@@ -186,16 +184,16 @@ class SocketService {
     if (this.socket && this.isConnected) {
       this.socket.emit("joinUser", userId);
       this.userId = userId;
-      console.log(`✅ User ${userId} joined notification room at`, new Date().toLocaleString());
+      // console.log(`✅ User ${userId} joined notification room at`, new Date().toLocaleString());
     } else {
       console.warn("⚠️ Cannot join room: Socket is not connected");
     }
   }
 
   onMessage(callback: (message: MessageType) => void): void {
-    this.socket?.on("newMessage", (payload: any) => {
+    this.socket?.on("newMessage", (payload: MessageType) => {
       // Normalize payload shape: backend may emit either the raw message or { success, message, data }
-      const message: any = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
+      const message = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
       console.log('Received new message (normalized):', message);
       callback(message as MessageType);
     });
@@ -213,11 +211,11 @@ onUserTyping(callback: (data: { userId: string; isTyping: boolean }) => void): v
     this.socket?.on("messageStatusUpdate", callback);
   }
 
-  onNotification(callback: (notification: Notification) => void): void {
+  onNotification(callback: (notification: NotificationType) => void): void {
     this.socket?.on("newNotification", callback);
   }
 
-  offNotification(callback?: (notification: Notification) => void): void {
+  offNotification(callback?: (notification: NotificationType) => void): void {
     if (callback) {
       this.socket?.off("newNotification", callback);
     } else {
@@ -227,6 +225,76 @@ onUserTyping(callback: (data: { userId: string; isTyping: boolean }) => void): v
 
   onError(callback: (error: { error: string }) => void): void {
     this.socket?.on("messageError", callback);
+  }
+
+  // Listen for message deletion events
+  onMessageDeleted(callback: (data: { messageId: string; deletedFor: string[]; hardDelete: boolean; conversationId: string }) => void): void {
+    this.socket?.on("messageDeleted", callback);
+  }
+
+  // Listen for message edit events
+  onMessageEdited(callback: (data: { messageId: string; content: string; isEdited: boolean; editedAt: string }) => void): void {
+    this.socket?.on("messageEdited", callback);
+  }
+
+  // Remove message deletion listener
+  offMessageDeleted(callback?: (data: { messageId: string; deletedFor: string[]; hardDelete: boolean; conversationId: string }) => void): void {
+    if (callback) {
+      this.socket?.off("messageDeleted", callback);
+    } else {
+      this.socket?.off("messageDeleted");
+    }
+  }
+
+  // Remove message edit listener
+  offMessageEdited(callback?: (data: { messageId: string; content: string; isEdited: boolean; editedAt: string }) => void): void {
+    if (callback) {
+      this.socket?.off("messageEdited", callback);
+    } else {
+      this.socket?.off("messageEdited");
+    }
+  }
+
+  // Listen for conversation refresh events (when deleted messages need UI refresh)
+  onConversationRefresh(callback: (data: { conversationId: string; reason: string }) => void): void {
+    this.socket?.on("conversationRefresh", callback);
+  }
+
+  // Remove conversation refresh listener
+  offConversationRefresh(callback?: (data: { conversationId: string; reason: string }) => void): void {
+    if (callback) {
+      this.socket?.off("conversationRefresh", callback);
+    } else {
+      this.socket?.off("conversationRefresh");
+    }
+  }
+
+  // Listen for chat list refresh events
+  onChatListRefresh(callback: (data: { reason: string; conversationId: string; deletedBy: string }) => void): void {
+    this.socket?.on("chatListRefresh", callback);
+  }
+
+  // Remove chat list refresh listener
+  offChatListRefresh(callback?: (data: { reason: string; conversationId: string; deletedBy: string }) => void): void {
+    if (callback) {
+      this.socket?.off("chatListRefresh", callback);
+    } else {
+      this.socket?.off("chatListRefresh");
+    }
+  }
+
+  // Listen for bulk message deletion events
+  onBulkMessageDeleted(callback: (data: { messageIds: string[]; conversationId: string; deletedBy: string; count: number }) => void): void {
+    this.socket?.on("bulkMessageDeleted", callback);
+  }
+
+  // Remove bulk message deletion listener
+  offBulkMessageDeleted(callback?: (data: { messageIds: string[]; conversationId: string; deletedBy: string; count: number }) => void): void {
+    if (callback) {
+      this.socket?.off("bulkMessageDeleted", callback);
+    } else {
+      this.socket?.off("bulkMessageDeleted");
+    }
   }
 
   joinConversation(receiverId: string): void {

@@ -40,7 +40,7 @@ export default function Connections() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 flex items-center justify-center p-6">
+    <div className="min-h-screen w-[1350px] bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 flex items-center justify-center p-6">
       <div className="w-full max-w-lg bg-white shadow-2xl rounded-2xl p-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
           🔗 Suggested Connections

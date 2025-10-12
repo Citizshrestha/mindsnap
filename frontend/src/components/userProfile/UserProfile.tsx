@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import "./userProfile.css";
 import axiosClient from "../../api/axiosClient";
 import { useSelector, useDispatch } from "react-redux";
-import { setProfilePicture, setCoverImage } from "../../redux/slices/userSlice";
 import { setActiveChat, setCurrentConversationId, setConversationMap } from "../../redux/slices/messageSlice";
 import type { RootState, AppDispatch } from "../../redux/store";
 import { useNavigate, useParams } from "react-router-dom";
@@ -94,9 +93,7 @@ interface Highlight {
 
 const UserProfile: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
-  const { profilePicture: currentProfilePicture, username: currentUsername, coverImage: currentCoverImg } = useSelector(
-    (state: RootState) => state.user
-  );
+  // Using local state for profile data instead of Redux to prevent conflicts
   const conversations = useSelector((state: RootState) => state.message.conversations);
 
   const { userId } = useParams<{ userId?: string }>();
@@ -108,6 +105,8 @@ const UserProfile: React.FC = () => {
   const [aboutMe, setAboutMe] = useState("");
   const [vibe, setVibe] = useState("");
   const [vibeDescription, setVibeDescription] = useState("");
+  const [profilePicture, setProfilePicture] = useState("");
+  const [coverImage, setCoverImage] = useState("");
   const [postsCount, setPostsCount] = useState(0);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -144,7 +143,7 @@ const UserProfile: React.FC = () => {
 
       if (response.data.success) {
         setHighlights(response.data.highlights);
-        
+
         // Collect all used story IDs from existing highlights
         const used = new Set<string>();
         response.data.highlights.forEach((highlight: Highlight) => {
@@ -171,7 +170,7 @@ const UserProfile: React.FC = () => {
 
       if (response.data.success) {
         // Filter out stories that are already used in highlights
-        const unusedStories = response.data.stories.filter((story: Story) => 
+        const unusedStories = response.data.stories.filter((story: Story) =>
           !usedStoryIds.has(story._id)
         );
         setAvailableStories(unusedStories);
@@ -212,13 +211,13 @@ const UserProfile: React.FC = () => {
         setSelectedStories([]);
         setSelectedCoverStory("");
         toast.success("Highlight created successfully!");
-        
+
         // Refresh highlights to update used stories
         fetchHighlights();
       }
     } catch (err) {
       console.error("Failed to create highlight:", err);
-      toast.error( "Failed to create highlight");
+      toast.error("Failed to create highlight");
     } finally {
       setIsLoading(false);
     }
@@ -239,13 +238,13 @@ const UserProfile: React.FC = () => {
         setShowHighlightOptions(null);
         setShowHighlightDetails(null);
         toast.success("Highlight deleted successfully!");
-        
+
         // Refresh highlights to update used stories
         fetchHighlights();
       }
     } catch (err) {
       console.error("Failed to delete highlight:", err);
-      toast.error( "Failed to delete highlight");
+      toast.error("Failed to delete highlight");
     } finally {
       setIsLoading(false);
     }
@@ -274,7 +273,8 @@ const UserProfile: React.FC = () => {
       toast.error("You can only create highlights for your own profile");
       return;
     }
-    
+
+
     fetchAvailableStories();
     setShowCreateHighlight(true);
   };
@@ -303,8 +303,12 @@ const UserProfile: React.FC = () => {
       const data = response.data;
       setFullname(data.fullname || "");
       setUsername(data.username || "");
-      if (data.profilePicture) dispatch(setProfilePicture(data.profilePicture));
-      if (data.coverImage) dispatch(setCoverImage(data.coverImage));
+      // Set profile user's data, not current user's Redux state
+      setProfilePicture(data.profilePicture || "");
+      setCoverImage(data.coverImage || "");
+      
+      // Note: Using local state for profile pictures instead of Redux
+      // This prevents profile picture conflicts when viewing other users
       setAboutMe(data.aboutMe || "");
       setVibe(data.vibe || "");
       setVibeDescription(data.vibeDescription || "");
@@ -358,16 +362,16 @@ const UserProfile: React.FC = () => {
         headers: { Authorization: `Bearer ${token}` },
         params: { mediaOnly: true },
       });
-      
+
       const allPosts = response.data.posts;
       if (userId) {
-        const filteredPosts = allPosts.filter((post: Post) => 
+        const filteredPosts = allPosts.filter((post: Post) =>
           post.user?._id === userId && (post.image || post.video)
         );
         setUserPosts(filteredPosts);
       } else {
         const currentUserId = localStorage.getItem("userId");
-        const myPosts = allPosts.filter((post: Post) => 
+        const myPosts = allPosts.filter((post: Post) =>
           post.user?._id === currentUserId && (post.image || post.video)
         );
         setUserPosts(myPosts);
@@ -544,8 +548,8 @@ const UserProfile: React.FC = () => {
         console.error("Failed to create conversation:", response?.data);
         toast.error(response.data.message || "Failed to start conversation");
       }
-    } catch (err: unknown) {
-      console.error("Error starting conversation:", err?.response?.data ?? err);
+    } catch (err: any) {
+      // console.error("Error starting conversation:", err?.response?.data ?? err);
       if (err.response?.status === 401) {
         localStorage.removeItem("accessToken");
         navigate("/");
@@ -574,6 +578,55 @@ const UserProfile: React.FC = () => {
     fetchHighlights();
   }, [fetchUserProfile, fetchPosts, fetchHighlights]);
 
+  // Listen for user deletion events to update follower/following lists
+  useEffect(() => {
+    const handleUserAccountDeleted = (data: { deletedUserId: string; deletedUsername: string; message: string }) => {
+      console.log(`🗑️ User deleted from profile: ${data.deletedUsername}`);
+      
+      // Remove from followers list
+      setFollowersList(prevList => prevList.filter(user => user._id !== data.deletedUserId));
+      
+      // Remove from following list
+      setFollowingList(prevList => prevList.filter(user => user._id !== data.deletedUserId));
+      
+      // Update counts
+      setFollowersCount(prev => Math.max(0, prev - 1));
+      setFollowingCount(prev => Math.max(0, prev - 1));
+      
+      // Show notification
+      toast.info(`${data.deletedUsername} has deleted their account`);
+    };
+
+    const handleUserDeleted = (data: { deletedUserId: string; deletedUsername: string; message: string }) => {
+      console.log(`🗑️ Individual user deleted from profile connections: ${data.deletedUsername}`);
+      
+      // Remove from followers list
+      setFollowersList(prevList => prevList.filter(user => user._id !== data.deletedUserId));
+      
+      // Remove from following list
+      setFollowingList(prevList => prevList.filter(user => user._id !== data.deletedUserId));
+      
+      // Update counts if this is the current user's profile
+      if (!userId) {
+        setFollowersCount(prev => Math.max(0, prev - 1));
+        setFollowingCount(prev => Math.max(0, prev - 1));
+      }
+    };
+
+    // Import socketService
+    import('../../services/socketServices').then(({ socketService }) => {
+      socketService.onUserAccountDeleted(handleUserAccountDeleted);
+      socketService.onUserDeleted(handleUserDeleted);
+    });
+
+    return () => {
+      import('../../services/socketServices').then(({ socketService }) => {
+        socketService.offUserAccountDeleted(handleUserAccountDeleted);
+        socketService.offUserDeleted(handleUserDeleted);
+      });
+    };
+  }, [userId]);
+
   if (error) {
     return <div>{error}</div>;
   }
@@ -585,7 +638,7 @@ const UserProfile: React.FC = () => {
           <div className="profileSection w-full">
             <div className="relative h-[250px] w-full rounded-2xl overflow-hidden shadow-lg">
               <img
-                src={currentCoverImg}
+                src={coverImage}
                 className="h-full w-full object-cover"
                 alt="cover"
                 onError={(e: React.SyntheticEvent<HTMLImageElement>) =>
@@ -596,7 +649,7 @@ const UserProfile: React.FC = () => {
             <div className="absolute left-56 bottom-28 z-10">
               <div className="rounded-full ml-25 border-4 border-white shadow-xl bg-gradient-to-tr from-[#A084E8] to-[#611DD0] p-1">
                 <img
-                  src={currentProfilePicture || defaultAvatar}
+                  src={profilePicture || defaultAvatar}
                   alt="profilePic"
                   className="w-42 h-42 rounded-full object-cover bg-white"
                   onError={(e: React.SyntheticEvent<HTMLImageElement>) =>
@@ -625,11 +678,10 @@ const UserProfile: React.FC = () => {
                   <div className="flex justify-between gap-3">
                     <button
                       onClick={() => (isFollowing ? handleUnfollow(userId) : handleFollow(userId))}
-                      className={`mt-2 px-4 py-2 rounded-full font-semibold shadow ${
-                        isFollowing
+                      className={`mt-2 px-4 py-2 rounded-full font-semibold shadow ${isFollowing
                           ? "bg-red-500 text-white hover:bg-red-600"
                           : "bg-[#611DD0] text-white hover:bg-[#5000B9]"
-                      }`}
+                        }`}
                     >
                       {isFollowing ? "Unfollow" : "Follow"}
                     </button>
@@ -677,7 +729,7 @@ const UserProfile: React.FC = () => {
             {/* Create New Highlight Button (only for own profile) */}
             {!userId && (
               <div
-                className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10 cursor-pointer flex-shrink-0"
+                className="stories relative w-[180px] h-[170px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10 cursor-pointer flex-shrink-0"
                 onClick={handleOpenCreateHighlight}
               >
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-100 to-indigo-100 border-2 border-dashed border-[#611DD0]">
@@ -693,17 +745,17 @@ const UserProfile: React.FC = () => {
             {highlights.map((highlight) => (
               <div
                 key={highlight._id}
-                className="stories relative w-[180px] h-[150px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10 cursor-pointer flex-shrink-0"
+                className="stories relative w-[180px] h-[170px] overflow-hidden rounded-[20px] before:absolute before:inset-0 before:bg-white/10 cursor-pointer flex-shrink-0"
                 onClick={() => handleViewHighlight(highlight)}
               >
                 <img
-                  src={highlight.coverStory.content.url || "default-story.jpg"}
+                  src={highlight.coverStory?.content?.url || "default-story.jpg"}
                   alt={highlight.name}
                   className="w-full h-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 text-white text-lg font-semibold text-center px-2">
-                  {highlight.name}
+                  <h1 className="text-2xl font-cursive">{highlight.name}</h1>
                 </div>
               </div>
             ))}
@@ -741,7 +793,7 @@ const UserProfile: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  style={{backgroundColor: "#fff"}}
+                  style={{ backgroundColor: "#fff" }}
                   value={newHighlightName}
                   onChange={(e) => setNewHighlightName(e.target.value.slice(0, 20))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#611DD0]"
@@ -763,9 +815,8 @@ const UserProfile: React.FC = () => {
                     {availableStories.map((story) => (
                       <div
                         key={story._id}
-                        className={`relative cursor-pointer rounded-lg overflow-hidden border-2 ${
-                          selectedCoverStory === story._id ? 'border-[#611DD0]' : 'border-gray-300'
-                        }`}
+                        className={`relative cursor-pointer rounded-lg overflow-hidden border-2 ${selectedCoverStory === story._id ? 'border-[#611DD0]' : 'border-gray-300'
+                          }`}
                         onClick={() => setSelectedCoverStory(story._id)}
                       >
                         <img
@@ -784,47 +835,6 @@ const UserProfile: React.FC = () => {
                 )}
               </div>
 
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Additional Stories (Optional)
-                </label>
-                {availableStories.filter(story => story._id !== selectedCoverStory).length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">
-                    No additional stories available.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-3 max-h-48 overflow-y-auto">
-                    {availableStories
-                      .filter(story => story._id !== selectedCoverStory)
-                      .map((story) => (
-                      <div
-                        key={story._id}
-                        className={`relative cursor-pointer rounded-lg overflow-hidden border-2 ${
-                          selectedStories.includes(story._id) ? 'border-[#611DD0]' : 'border-gray-300'
-                        }`}
-                        onClick={() => {
-                          setSelectedStories(prev =>
-                            prev.includes(story._id)
-                              ? prev.filter(id => id !== story._id)
-                              : [...prev, story._id]
-                          );
-                        }}
-                      >
-                        <img
-                          src={story.content.url}
-                          alt="Story"
-                          className="w-full h-24 object-cover"
-                        />
-                        {selectedStories.includes(story._id) && (
-                          <div className="absolute inset-0 bg-[#611DD0] bg-opacity-50 flex items-center justify-center">
-                            <span className="text-white font-bold">✓</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               <div className="flex justify-end gap-3">
                 <button
@@ -885,15 +895,15 @@ const UserProfile: React.FC = () => {
 
                 {/* Story content - you can implement story cycling similar to your main story viewer */}
                 <img
-                  src={showHighlightDetails.coverStory.content.url}
+                  src={showHighlightDetails.coverStory?.content?.url || "default-story.jpg"}
                   alt={showHighlightDetails.name}
                   className="w-full h-full object-contain"
                 />
 
-                {showHighlightDetails.coverStory.caption && (
+                {showHighlightDetails.coverStory?.caption && (
                   <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 text-white text-center z-40 max-w-4/5">
                     <div className="bg-black bg-opacity-50 rounded-2xl px-6 py-3 backdrop-blur-sm">
-                      {showHighlightDetails.coverStory.caption}
+                      {showHighlightDetails.coverStory?.caption}
                     </div>
                   </div>
                 )}
@@ -904,7 +914,7 @@ const UserProfile: React.FC = () => {
 
         {/* Highlight Options Modal */}
         {showHighlightOptions && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-4 min-w-[200px] shadow-xl border border-gray-200 animate-fade-in">
               <button
                 onClick={() => {
@@ -967,7 +977,7 @@ const UserProfile: React.FC = () => {
             {posts.map((post) => (
               <div
                 key={post._id}
-                className="w-full h-80 object-cover rounded-lg cursor-pointer"
+                className="w-full h-80 rounded-lg cursor-pointer overflow-hidden"
                 onClick={() => handleViewPost(post)}
               >
                 {(post.image || post.video) ? (
@@ -977,7 +987,7 @@ const UserProfile: React.FC = () => {
                     className="w-full h-full object-cover rounded-lg"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                  <div className="w-full h-full bg-gray-200 flex items-center justify-center rounded-lg">
                     <p className="text-gray-600">{post.content}</p>
                   </div>
                 )}
@@ -986,7 +996,7 @@ const UserProfile: React.FC = () => {
           </div>
         </div>
       </div>
-      
+
       {!userId && (
         <div className="absolute left-250 top-10">
           <MoodMaker />
@@ -1016,11 +1026,13 @@ const UserProfile: React.FC = () => {
                     {selectedPost.content}
                   </p>
                   {(selectedPost.image || selectedPost.video) && (
-                    <img
-                      src={selectedPost.image || selectedPost.video}
-                      alt="post media"
-                      className="mt-4 rounded-xl h-[450px] w-full object-cover border border-purple-100 shadow-sm"
-                    />
+                    <div className="mt-4 rounded-xl h-[450px] w-full bg-gray-50 flex items-center justify-center overflow-hidden border border-purple-100 shadow-sm">
+                      <img
+                        src={selectedPost.image || selectedPost.video}
+                        alt="post media"
+                        className="max-h-full max-w-full object-contain rounded-xl"
+                      />
+                    </div>
                   )}
                   <div className="flex justify-between text-gray-800 mt-6 text-sm w-full px-4">
                     <span className="flex items-center gap-2 bg-purple-100 px-3 py-1 rounded-full">
@@ -1036,8 +1048,8 @@ const UserProfile: React.FC = () => {
                 </div>
               </>
             )}
-            
-           
+
+
             {showModal === "post" && !selectedPost && userPosts.length > 0 && (
               <>
                 <h2 className="text-2xl font-bold mb-4 text-purple-800">All Posts by {fullname}</h2>
@@ -1061,11 +1073,13 @@ const UserProfile: React.FC = () => {
                       </div>
                       <p className="text-gray-700 text-lg break-words mb-3 bg-purple-50 p-3 rounded-lg">{post.content}</p>
                       {(post.image || post.video) && (
-                        <img
-                          src={post.image || post.video}
-                          alt="post media"
-                          className="rounded-xl h-[450px] w-full object-cover mb-3 border border-purple-100"
-                        />
+                        <div className="rounded-xl h-[450px] w-full bg-gray-50 flex items-center justify-center overflow-hidden mb-3 border border-purple-100">
+                          <img
+                            src={post.image || post.video}
+                            alt="post media"
+                            className="max-h-full max-w-full object-contain rounded-xl"
+                          />
+                        </div>
                       )}
                       <div className="flex justify-between text-gray-800 text-sm">
                         <span className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-full">
@@ -1105,7 +1119,7 @@ const UserProfile: React.FC = () => {
                         className="flex items-center cursor-pointer"
                         onClick={() => {
                           setShowModal(null);
-                          if (user._id === loggedInUserId || user.username === currentUsername) {
+                          if (user._id === loggedInUserId) {
                             navigate("/profile");
                           } else {
                             navigate(`/profile/${user._id}`);

@@ -297,6 +297,34 @@ onUserTyping(callback: (data: { userId: string; isTyping: boolean }) => void): v
     }
   }
 
+  // Listen for user account deletion events
+  onUserAccountDeleted(callback: (data: { deletedUserId: string; deletedUsername: string; message: string }) => void): void {
+    this.socket?.on("userAccountDeleted", callback);
+  }
+
+  // Remove user account deletion listener
+  offUserAccountDeleted(callback?: (data: { deletedUserId: string; deletedUsername: string; message: string }) => void): void {
+    if (callback) {
+      this.socket?.off("userAccountDeleted", callback);
+    } else {
+      this.socket?.off("userAccountDeleted");
+    }
+  }
+
+  // Listen for individual user deletion events (for followers/following)
+  onUserDeleted(callback: (data: { deletedUserId: string; deletedUsername: string; message: string }) => void): void {
+    this.socket?.on("userDeleted", callback);
+  }
+
+  // Remove individual user deletion listener
+  offUserDeleted(callback?: (data: { deletedUserId: string; deletedUsername: string; message: string }) => void): void {
+    if (callback) {
+      this.socket?.off("userDeleted", callback);
+    } else {
+      this.socket?.off("userDeleted");
+    }
+  }
+
   joinConversation(receiverId: string): void {
     this.socket?.emit("joinConversation", receiverId);
   }

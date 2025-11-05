@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+// import { useLocation, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import MaleAvatar from "../../../public/images/Male Avatar.png";
 import FemaleAvatar from "../../../public/images/Female Avatar.webp";
@@ -13,6 +14,7 @@ import {
   setGender,
 } from "../../redux/slices/userSlice";
 import axiosClient from "../../api/axiosClient";
+import { editPost } from "../../api/posts";
 import type { RootState } from "../../redux/store";
 import {
   FaRegCommentDots,
@@ -186,9 +188,15 @@ const Home = () => {
     _id: currentUserId,
   } = useSelector((state: RootState) => state.user);
 
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [showPostOptions, setShowPostOptions] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerPosition, setEmojiPickerPosition] = useState({ top: 0, left: 0 });
+  const [editingPost, setEditingPost] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [editMedia, setEditMedia] = useState<File | null>(null);
+  const [hashtagRefreshKey, setHashtagRefreshKey] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<File | null>(null);
   const [selectedMediaType, setSelectedMediaType] = useState<
     "image" | "video" | null
@@ -204,6 +212,7 @@ const Home = () => {
   );
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const commentEmojiPickerRef = useRef<HTMLDivElement>(null);
   const replyEmojiPickerRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -303,6 +312,30 @@ const Home = () => {
       }
     };
   }, [currentUserId]);
+
+  // Handle user account deletion events
+  useEffect(() => {
+    const handleUserAccountDeleted = (data: { deletedUserId: string; deletedUsername: string; message: string }) => {
+      console.log(`🗑️ User account deleted globally: ${data.deletedUsername}`);
+      
+      // Show notification
+      toast.info(data.message);
+      
+      // Remove posts from deleted user
+      setPosts(prevPosts => prevPosts.filter(post => post.userId !== data.deletedUserId));
+      
+      // Trigger hashtag refresh to update counts
+      setHashtagRefreshKey(prev => prev + 1);
+    };
+
+    // Add listener
+    socketService.onUserAccountDeleted(handleUserAccountDeleted);
+
+    return () => {
+      // Cleanup listener
+      socketService.offUserAccountDeleted(handleUserAccountDeleted);
+    };
+  }, []);
 
   const getAvatarByGender = (gender: string) => {
     if (gender?.toLowerCase() === "male") return MaleAvatar;
@@ -751,31 +784,49 @@ useEffect(() => {
 
       console.log("=== FETCHED POSTS DEBUG ===");
       console.log("Raw response data:", res.data);
+      
+      // Count and log null posts
+      const nullPostCount = res.data.filter((post: unknown) => post === null || post === undefined).length;
+      if (nullPostCount > 0) {
+        console.warn(`⚠️ Found ${nullPostCount} null/undefined posts in response`);
+      }
 
-      const formattedPosts: Post[] = res.data.map((post: unknown) => {
-        const postData = post as {
-          _id: string;
-          content: string;
-          image?: string;
-          likes: number;
-          comments: unknown;
-          shares: number;
-          createdAt: string;
-          user?: {
-            profilePicture?: string;
-            username?: string;
-            fullname?: string;
+      // Store original data for sorting and filter out null/undefined posts
+      const originalPosts = res.data.filter((post: unknown) => post !== null && post !== undefined);
+
+      const formattedPosts: Post[] = originalPosts.map((post: unknown) => {
+        try {
+          // Additional null check
+          if (!post || typeof post !== 'object') {
+            throw new Error('Invalid post object');
+          }
+
+          const postData = post as {
             _id: string;
+            content: string;
+            image?: string;
+            likes: number;
+            comments: unknown;
+            shares: number;
+            createdAt: string;
+            user?: {
+              profilePicture?: string;
+              username?: string;
+              fullname?: string;
+              _id: string;
+            };
+            userReaction?: string;
+            reactionCounts?: { [key: string]: number };
           };
-          userReaction?: string;
-          reactionCounts?: { [key: string]: number };
-        };
-        
-        console.log("Post from backend:", postData);
+          
+          console.log("Post from backend:", postData);
 
         let totalCommentCount = 0;
         
-        if (typeof postData.comments === "number") {
+        // Handle null, undefined, or missing comments
+        if (postData.comments === null || postData.comments === undefined) {
+          totalCommentCount = 0;
+        } else if (typeof postData.comments === "number") {
           totalCommentCount = postData.comments;
         } else if (Array.isArray(postData.comments)) {
           totalCommentCount = postData.comments.reduce((total: number, comment: unknown) => {
@@ -819,10 +870,39 @@ useEffect(() => {
         console.log("Formatted post comment count:", formattedPost.comments);
         console.log("Total comments including replies:", totalCommentCount);
         return formattedPost;
-      });
+        } catch (error) {
+          console.error("Error formatting post:", error, "Post data:", post);
+          // Return null for invalid posts so they can be filtered out
+          return null;
+        }
+      }).filter((post: Post | null): post is Post => post !== null); // Filter out any null/invalid posts
 
       console.log("All formatted posts:", formattedPosts);
-      setPosts(formattedPosts);
+      
+      /**
+       * Post Sorting Algorithm
+       * 
+       * Sorts posts by createdAt timestamp in descending order (newest first).
+       * This ensures:
+       * 1. Consistent post ordering across page refreshes
+       * 2. Deterministic behavior regardless of browser or session
+       * 3. New posts appear at the top of the feed
+       * 
+       * The sorting is based on the original backend timestamp, not the formatted time string,
+       * ensuring accuracy and consistency across different time zones and locales.
+       */
+      const sortedPosts = formattedPosts.sort((a, b) => {
+        // Get the original post data to access the createdAt timestamp
+        const originalPostA = originalPosts.find((post: any) => post._id === a.id);
+        const originalPostB = originalPosts.find((post: any) => post._id === b.id);
+        
+        const dateA = new Date(originalPostA?.createdAt || 0);
+        const dateB = new Date(originalPostB?.createdAt || 0);
+        
+        return dateB.getTime() - dateA.getTime(); // Newest first
+      });
+      
+      setPosts(sortedPosts);
     } catch (err: unknown) {
       const error = err as {
         message?: string;
@@ -984,6 +1064,10 @@ useEffect(() => {
           setShowEmojiPicker(false);
           if (imageInputRef.current) imageInputRef.current.value = "";
           if (videoInputRef.current) videoInputRef.current.value = "";
+          
+          // Trigger hashtag refresh for new posts too
+          setHashtagRefreshKey(prev => prev + 1);
+          
           toast.success("Post created successfully!");
         } else {
           toast.error(response.data.message || "Failed to create post");
@@ -1016,9 +1100,71 @@ useEffect(() => {
   };
 
   const toggleEmojiPicker = () => {
+    if (!showEmojiPicker && emojiButtonRef.current) {
+      const buttonRect = emojiButtonRef.current.getBoundingClientRect();
+      setEmojiPickerPosition({
+        top: buttonRect.bottom + 8, // 8px below the button
+        left: buttonRect.left
+      });
+    }
     setShowEmojiPicker(!showEmojiPicker);
     if (!showEmojiPicker && textareaRef.current)
       setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const handleEditPost = (post: Post) => {
+    setEditingPost(post.id);
+    setEditContent(post.caption);
+    setShowOptionsMenu(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPost || !editContent.trim()) {
+      toast.error("Please enter content for the post");
+      return;
+    }
+
+    try {
+      const response = await editPost(editingPost, editContent.trim(), editMedia || undefined);
+      
+      if (response.success) {
+        // Update the post in the posts array
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post.id === editingPost 
+              ? {
+                  ...post,
+                  caption: response.post.content,
+                  media: response.post.image ? {
+                    type: response.post.image.includes("/video/") ? "video" : "image",
+                    url: response.post.image,
+                    name: response.post.image.split("/").pop() || ""
+                  } : null
+                }
+              : post
+          )
+        );
+        
+        // Reset edit state
+        setEditingPost(null);
+        setEditContent("");
+        setEditMedia(null);
+        
+        // Trigger hashtag refresh
+        setHashtagRefreshKey(prev => prev + 1);
+        
+        toast.success("Post updated successfully!");
+      }
+    } catch (error) {
+      console.error("Error editing post:", error);
+      toast.error("Failed to update post");
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPost(null);
+    setEditContent("");
+    setEditMedia(null);
   };
 
 const handleReaction = async (
@@ -1311,67 +1457,47 @@ const getReactionVerb = (reactionType: string): string => {
         >
           <div className="flex-1 max-w-3xl">
             {/* Create Post */}
-            <motion.div 
+            <div 
               className="bg-white flex flex-col shadow-md rounded-2xl p-4 mt-6 mb-4 relative"
-              variants={itemVariants}
-              whileHover={{ y: -2, transition: { duration: 0.2 } }}
-              layout
+              style={{ zIndex: 1000 }}
             >
               <div className="flex items-center gap-4 mt-2">
-                <motion.img
+                <img
                   src={profilePicture || getAvatarByGender(gender)}
                   alt="Profile"
                   className="w-12 h-12 rounded-full object-cover"
                   onError={(e) =>
                     (e.currentTarget.src = getAvatarByGender(gender))
                   }
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
                 />
-                <motion.textarea
+                <textarea
                   ref={textareaRef}
                   className="w-full border font-['Nunito Bold'] text-black rounded-xl p-3 outline-none resize-none"
                   rows={2}
                   placeholder="What's on your Heart? #Hashtag... @Mention... Link..."
                   onFocus={() => setShowPostOptions(true)}
-                  whileFocus={{ scale: 1.02 }}
-                  transition={{ type: "spring", stiffness: 300 }}
-                ></motion.textarea>
+                ></textarea>
               </div>
 
-              <AnimatePresence>
-                {selectedMedia && (
-                  <motion.div 
-                    className="mt-3 p-2 bg-gray-100 rounded-lg flex items-center justify-between"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
+              {selectedMedia && (
+                <div className="mt-3 p-2 bg-gray-100 rounded-lg flex items-center justify-between">
                     <span className="text-sm text-gray-700">
                       Selected: {selectedMedia.name} ({selectedMediaType})
                     </span>
-                    <motion.button
+                    <button
                       onClick={clearSelectedMedia}
                       className="text-red-500 hover:text-red-700 text-sm"
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
                     >
                       Remove
-                    </motion.button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    </button>
+                </div>
+              )}
 
-              <AnimatePresence>
-                {showPostOptions && (
-                  <motion.div 
-                    className="flex items-center justify-between mt-4 p-2"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
+              {showPostOptions && (
+                <div 
+                  className="flex items-center justify-between mt-4 p-2"
+                  style={{ zIndex: 1001 }}
+                >
                     <div className="flex gap-4 text-[#611DD0]">
                       <input
                         type="file"
@@ -1380,15 +1506,13 @@ const getReactionVerb = (reactionType: string): string => {
                         accept="image/*"
                         className="hidden"
                       />
-                      <motion.button
+                      <button
                         className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
                         onClick={() => imageInputRef.current?.click()}
                         title="Upload image"
-                        whileHover={{ scale: 1.1, rotate: 5 }}
-                        whileTap={{ scale: 0.9 }}
                       >
                         <span className="text-2xl">📸</span>
-                      </motion.button>
+                      </button>
 
                       <input
                         type="file"
@@ -1397,76 +1521,66 @@ const getReactionVerb = (reactionType: string): string => {
                         accept="video/*"
                         className="hidden"
                       />
-                      <motion.button
+                      <button
                         className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
                         onClick={() => videoInputRef.current?.click()}
                         title="Upload video"
-                        whileHover={{ scale: 1.1, rotate: -5 }}
-                        whileTap={{ scale: 0.9 }}
                       >
                         <FaVideo className="text-xl text-[#611DD0]" />
-                      </motion.button>
+                      </button>
 
-                      <motion.button
+                      <button
+                        ref={emojiButtonRef}
                         className="p-2 cursor-pointer hover:bg-purple-100 rounded-full transition-colors"
                         onClick={toggleEmojiPicker}
                         title="Add emoji"
-                        whileHover={{ scale: 1.1, rotate: 5 }}
-                        whileTap={{ scale: 0.9 }}
+                        style={{ zIndex: 1002 }}
                       >
                         <span className="text-2xl">😊</span>
-                      </motion.button>
+                      </button>
                     </div>
-                    <motion.button
+                    <button
                       className="flex items-center gap-2 bg-[#611DD0] text-white px-4 py-2 rounded-lg hover:bg-[#a679ee] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={handlePostSubmit}
                       disabled={isPosting}
-                      whileHover={!isPosting ? { scale: 1.05 } : {}}
-                      whileTap={!isPosting ? { scale: 0.95 } : {}}
                     >
                       {isPosting ? (
                         <>
-                          <motion.div 
-                            className="w-4 h-4 border-2 border-white border-t-transparent rounded-full"
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          ></motion.div>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                           Posting...
                         </>
                       ) : (
                         "Post"
                       )}
-                    </motion.button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    </button>
+                </div>
+              )}
               
-              <AnimatePresence>
-                {showEmojiPicker && (
-                  <motion.div
-                    ref={emojiPickerRef}
-                    className="absolute top-16 left-16 z-10"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                  >
-                    <Picker
-                      data={data}
-                      onEmojiSelect={handleEmojiSelect}
-                      theme="light"
-                      previewPosition="none"
-                      skinTonePosition="none"
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
+              {showEmojiPicker && (
+                <div
+                  ref={emojiPickerRef}
+                  style={{ 
+                    position: 'fixed',
+                    zIndex: 100000,
+                    top: `${emojiPickerPosition.top}px`,
+                    left: `${emojiPickerPosition.left}px`
+                  }}
+                >
+                  <Picker
+                    data={data}
+                    onEmojiSelect={handleEmojiSelect}
+                    theme="light"
+                    previewPosition="none"
+                    skinTonePosition="none"
+                  />
+                </div>
+              )}
+            </div>
 
             {/* Stories Slider */}
-            <motion.div variants={itemVariants}>
+            <div style={{ zIndex: 50 }}>
               <Story />
-            </motion.div>
+            </div>
 
             {/* Post Feeds */}
             <motion.div 
@@ -1476,7 +1590,7 @@ const getReactionVerb = (reactionType: string): string => {
               {posts.map((post, index) => (
                 <motion.div
                   key={post.id}
-                  className="bg-white shadow-md mt-3 rounded-2xl p-6 relative"
+                  className={`bg-white shadow-md mt-3 rounded-2xl p-6 relative ${showOptionsMenu === post.id ? 'z-[100]' : 'z-0'}`}
                   variants={itemVariants}
                   initial="hidden"
                   animate="visible"
@@ -1518,7 +1632,7 @@ const getReactionVerb = (reactionType: string): string => {
                         {showOptionsMenu === post.id && (
                           <motion.div
                             ref={optionsMenuRef}
-                            className="absolute right-0 top-4  bg-white shadow-lg rounded-lg p-2 w-48 z-50 border border-gray-200"
+                            className="absolute right-0 top-4 bg-white shadow-lg rounded-lg p-2 w-48 z-[200] border border-gray-200"
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
@@ -1550,14 +1664,20 @@ const getReactionVerb = (reactionType: string): string => {
                             </motion.button>
 
                             {post.userId === currentUserId && (
-                              <motion.button
-                                className="w-full text-left p-2 hover:bg-red-50 rounded-md text-red-600 border-t border-gray-200 mt-2"
-                                onClick={() => setShowDeleteConfirm(post.id)}
-                                whileHover={{ x: 5 }}
-                                whileTap={{ scale: 0.95 }}
-                              >
-                                Delete post
-                              </motion.button>
+                              <>
+                                <button
+                                  className="w-full text-left p-2 hover:bg-blue-50 rounded-md text-blue-600 border-t border-gray-200 mt-2"
+                                  onClick={() => handleEditPost(post)}
+                                >
+                                  Edit post
+                                </button>
+                                <button
+                                  className="w-full text-left p-2 hover:bg-red-50 rounded-md text-red-600"
+                                  onClick={() => setShowDeleteConfirm(post.id)}
+                                >
+                                  Delete post
+                                </button>
+                              </>
                             )}
                           </motion.div>
                         )}
@@ -1565,22 +1685,57 @@ const getReactionVerb = (reactionType: string): string => {
                     </div>
                   </div>
                   <div className="mt-4">
-                    <p className="text-gray-800 text-lg text-left break-words mb-2">
-                      {post.caption.replace(/#\w+/g, "")}
-                    </p>
-                    {post.caption.match(/#\w+/g) && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {post.caption.match(/#\w+/g)?.map((hashtag, index) => (
-                          <motion.span
-                            key={index}
-                            className="text-[#611DD0] font-medium"
-                            whileHover={{ scale: 1.1 }}
-                            whileTap={{ scale: 0.95 }}
+                    {editingPost === post.id ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={editContent}
+                          onChange={(e) => setEditContent(e.target.value)}
+                          className="w-full border rounded-xl p-3 outline-none resize-none font-['Nunito Bold'] text-black"
+                          rows={3}
+                          placeholder="What's on your Heart? #Hashtag... @Mention... Link..."
+                        />
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="file"
+                            style={{background: "#fff"}}
+                            accept="image/*,video/*"
+                            onChange={(e) => setEditMedia(e.target.files?.[0] || null)}
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveEdit}
+                            className="px-4 py-2 bg-[#611DD0] text-white rounded-lg hover:bg-[#a679ee] transition-colors"
                           >
-                            {hashtag}
-                          </motion.span>
-                        ))}
+                            Save
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
+                    ) : (
+                      <>
+                        <p className="text-gray-800 text-lg text-left break-words mb-2">
+                          {post.caption.replace(/#\w+/g, "")}
+                        </p>
+                        {post.caption.match(/#\w+/g) && (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {post.caption.match(/#\w+/g)?.map((hashtag, index) => (
+                              <span
+                                key={index}
+                                className="text-[#611DD0] font-medium"
+                              >
+                                {hashtag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                   {post.media && (
@@ -1591,10 +1746,10 @@ const getReactionVerb = (reactionType: string): string => {
                       transition={{ delay: 0.2 }}
                     >
                       {post.media.type === "image" && (
-                        <motion.img
+                        <img
                           src={post.media.url}
                           alt="post media"
-                          className="rounded-xl h-[450px] w-full object-cover"
+                          className="rounded-xl max-h-[600px] w-full object-contain bg-gray-50"
                           onError={(e) => {
                             console.error(
                               "Failed to load post image:",
@@ -1602,22 +1757,18 @@ const getReactionVerb = (reactionType: string): string => {
                             );
                             e.currentTarget.style.display = "none";
                           }}
-                          whileHover={{ scale: 1.02 }}
-                          transition={{ type: "spring", stiffness: 200 }}
                         />
                       )}
                       {post.media.type === "video" && (
-                        <motion.video
+                        <video
                           autoPlay
                           playsInline
                           controls
-                          className="rounded-xl h-[450px] w-full object-cover"
-                          whileHover={{ scale: 1.02 }}
-                          transition={{ type: "spring", stiffness: 200 }}
+                          className="rounded-xl max-h-[600px] w-full object-contain bg-gray-50"
                         >
-                          <source src={post.media.url} type="video/mp4" />
+                          <source src={post.media.url} />
                           Your browser does not support the video tag.
-                        </motion.video>
+                        </video>
                       )}
                     </motion.div>
                   )}
@@ -1857,7 +2008,7 @@ const getReactionVerb = (reactionType: string): string => {
                               {commentStates[post.id]?.showCommentEmojiPicker && (
                                 <motion.div
                                   ref={commentEmojiPickerRef}
-                                  className="absolute bottom-12 right-0 z-10"
+                                  className="absolute bottom-12 right-0 z-[9999]"
                                   initial={{ opacity: 0, scale: 0.8 }}
                                   animate={{ opacity: 1, scale: 1 }}
                                   exit={{ opacity: 0, scale: 0.8 }}
@@ -2063,7 +2214,7 @@ const getReactionVerb = (reactionType: string): string => {
                                         {commentStates[post.id]?.showReplyEmojiPicker === comment._id && (
                                           <motion.div
                                             ref={replyEmojiPickerRef}
-                                            className="absolute bottom-8 right-0 z-10"
+                                            className="absolute bottom-8 right-0 z-[9999]"
                                             initial={{ opacity: 0, scale: 0.8 }}
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.8 }}
@@ -2211,24 +2362,26 @@ const getReactionVerb = (reactionType: string): string => {
         animate="visible"
         transition={{ delay: 0.5 }}
       >
-        <HashtagList />
+        <HashtagList key={hashtagRefreshKey} />
       </motion.div>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
         {showDeleteConfirm && (
           <motion.div 
-            className="fixed inset-0 bg-transparent bg-opacity-50 flex items-center justify-center z-50"
+            className="fixed inset-0 bg-transparent flex items-center justify-center z-[9999]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            onClick={() => setShowDeleteConfirm(null)}
           >
             <motion.div 
-              className="bg-white rounded-lg p-6 w-96"
+              className="bg-white rounded-lg p-6 w-96 shadow-2xl"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.8 }}
               transition={{ type: "spring", stiffness: 200, damping: 20 }}
+              onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-xl font-semibold mb-4">Confirm Deletion</h3>
               <p className="text-gray-700 mb-6">

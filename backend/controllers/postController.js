@@ -144,20 +144,18 @@ export const createPost = asyncHandler(async (req, res) => {
 
 export const getPosts = asyncHandler(async (req, res) => {
   try {
-    // Get user ID to create a consistent random seed for this user
+    // Get user ID and current timestamp for dynamic seed
     const userId = req.user._id.toString();
+    const currentHour = new Date().getHours();
+    const currentDate = new Date().getDate();
     
-    // Create a simple hash from userId to use as seed
-    let hash = 0;
+    // Create a hash from userId + currentDate + currentHour for dynamic seeding
+    let hash = currentDate * 100 + currentHour;
     for (let i = 0; i < userId.length; i++) {
       const char = userId.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32bit integer
     }
-    
-    // Use the hash to create a pseudo-random seed (changes daily)
-    const today = new Date().toDateString();
-    const dailySeed = hash + today.length;
     
     const posts = await Post.find()
       .populate("user", "username profilePicture fullname")
@@ -174,8 +172,11 @@ export const getPosts = asyncHandler(async (req, res) => {
       })
       .sort({ createdAt: -1 });
     
+    // Filter out posts from deleted users (where user is null after populate)
+    const validPosts = posts.filter(post => post.user !== null && post.user._id);
+    
     // Add userReaction to each post
-    const postsWithReactions = posts.map(post => {
+    const postsWithReactions = validPosts.map(post => {
       // Find the current user's like/reaction
       const userLike = post.likes.find(like => 
         like.user && like.user._id.toString() === req.user._id.toString()
@@ -194,40 +195,49 @@ export const getPosts = asyncHandler(async (req, res) => {
         userReaction: userLike ? userLike.reactionType : null,
         likes: post.likes.length,
         reactionCounts, // Include detailed reaction counts
-        comments: post.comments.map(comment => ({
+        comments: (post.comments || []).map(comment => ({
           ...comment.toObject(),
           // Add user reaction for comments too if needed
         }))
       };
     });
 
-    // Implement seeded random shuffle for consistent but different ordering per user
+    // Improved Fisher-Yates shuffle with seeded random for consistent but varied ordering
     const shuffleWithSeed = (array, seed) => {
       const shuffled = [...array];
       let currentIndex = shuffled.length;
       
-      // Simple seeded random number generator
-      const seededRandom = (seed) => {
-        const x = Math.sin(seed) * 10000;
-        return x - Math.floor(x);
+      // Seeded random number generator using LCG (Linear Congruential Generator)
+      const seededRandom = (s) => {
+        const a = 1664525;
+        const c = 1013904223;
+        const m = Math.pow(2, 32);
+        return ((a * s + c) % m) / m;
       };
       
+      let currentSeed = seed;
+      
       while (currentIndex !== 0) {
-        const randomIndex = Math.floor(seededRandom(seed + currentIndex) * currentIndex);
+        currentSeed = Math.floor(seededRandom(currentSeed) * 100000);
+        const randomIndex = Math.floor(seededRandom(currentSeed) * currentIndex);
         currentIndex--;
         
         // Swap elements
         [shuffled[currentIndex], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[currentIndex]];
-        seed++; // Change seed for next iteration
       }
       
       return shuffled;
     };
 
-    // Shuffle posts with user-specific seed
-    const randomizedPosts = shuffleWithSeed(postsWithReactions, dailySeed);
+    // Shuffle posts with dynamic seed (changes every hour)
+    const randomizedPosts = shuffleWithSeed(postsWithReactions, hash);
+    
+    // Final filter to ensure no null posts in response
+    const cleanedPosts = randomizedPosts.filter(post => post !== null && post !== undefined && post._id);
 
-    res.json(randomizedPosts);
+    console.log(`✅ Fetched ${cleanedPosts.length} posts with dynamic ordering (seed: ${hash})`);
+
+    res.json(cleanedPosts);
   } catch (error) {
     console.error("Error fetching posts:", error);
     res.status(500).json({

@@ -29,6 +29,7 @@ const notificationSchema = new mongoose.Schema(
     targetId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
+       refPath: 'targetType'
     },
     read: {
       type: Boolean,

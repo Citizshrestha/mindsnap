@@ -17,7 +17,7 @@ export const createStory = asyncHandler(async (req, res) => {
     user: userId,
     caption,
     content,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), 
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // Frontend will hide after 24 hours, but stays in DB
   });
 
   await story.populate("user", "username profilePicture");
@@ -34,7 +34,7 @@ export const createStory = asyncHandler(async (req, res) => {
       caption: story.caption,
       content: story.content,
       expiresAt: story.expiresAt,
-      createdAt: story.createdAt, // Make sure this is included
+      createdAt: story.createdAt, 
       views: story.views,
       likes: story.likes
     }

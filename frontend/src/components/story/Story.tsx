@@ -9,8 +9,6 @@ import {
   FaTrash,
   FaArrowLeft,
   FaArrowRight,
-  FaThumbsUp,
-  FaEye,
   FaClock,
 } from "react-icons/fa";
 import "swiper/css";
@@ -31,6 +29,7 @@ const Story = () => {
   const [currentStoryIndex, setCurrentStoryIndex] = useState(0);
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [viewedStories, setViewedStories] = useState<Set<string>>(new Set());
   const dispatch = useDispatch();
 
   const { profilePicture: currentPic } = useSelector(
@@ -98,21 +97,36 @@ const Story = () => {
     }
   };
 
-  // Get all unique users from stories
-  const allUsers = Array.from(new Set(stories.map((story) => story.user)));
-  const usersWithStories = allUsers.map((user) => ({
+  // Get all unique users from stories with proper deduplication
+  const userStoriesMap = new Map<string, StorySample[]>();
+  
+  stories.forEach((story) => {
+    const username = story.user;
+    if (!userStoriesMap.has(username)) {
+      userStoriesMap.set(username, []);
+    }
+    
+    // Check if this exact story already exists for this user
+    const userStories = userStoriesMap.get(username)!;
+    const existingStory = userStories.find(s => s._id === story._id);
+    
+    if (!existingStory) {
+      userStories.push(story);
+    }
+  });
+  
+  // Convert map to array and sort stories within each user group
+  const usersWithStories = Array.from(userStoriesMap.entries()).map(([user, userStories]) => ({
     user,
-    stories: stories
-      .filter((story) => story.user === user)
-      .sort(
-        (a, b) =>
-          new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime()
-      ),
+    stories: userStories.sort(
+      (a, b) =>
+        new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime()
+    ),
   }));
 
   const fetchStories = useCallback(async () => {
     if (!accessToken) {
-      toast.error("Please log in to load stories.");
+      // toast.error("Please log in to load stories.");
       setStories([]);
       return;
     }
@@ -140,7 +154,7 @@ const Story = () => {
         expiresAt:
           story.expiresAt ||
           new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        createdAt: story.createdAt || new Date().toISOString(), // Make sure this line exists and uses the actual createdAt from DB
+        createdAt: story.createdAt || new Date().toISOString(),
         views: story.views || [],
         likes: story.likes || [],
       }));
@@ -154,7 +168,14 @@ const Story = () => {
       );
 
       // Combine API stories with unique sample stories
-      const combinedStories = [...fetchedStories, ...uniqueSampleStories];
+      const allStories = [...fetchedStories, ...uniqueSampleStories];
+      
+      // Remove duplicates by user and story ID
+      const uniqueStories = allStories.filter((story, index, self) => 
+        index === self.findIndex((s) => s._id === story._id && s.user === story.user)
+      );
+
+      const combinedStories = uniqueStories;
 
       // Sort by expiration date (newest first)
       const sortedStories = combinedStories.sort(
@@ -384,6 +405,11 @@ const Story = () => {
     setCurrentStoryIndex(Math.max(0, storyIndex));
     setCurrentUserIndex(userIndex);
     setProgress(0);
+    
+    // Mark story as viewed if it's not the user's own story
+    if (story.user !== "You" && story._id) {
+      setViewedStories(prev => new Set([...prev, story._id!]));
+    }
   };
 
   const closeMyStories = () => setShowMyStories(false);
@@ -471,23 +497,22 @@ const Story = () => {
         new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime()
     );
 
-  const otherDbStories = stories
-    .filter(
-      (s) =>
-        s.user !== "You" &&
-        !storiesData.some((sample) => sample.user === s.user)
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime()
-    );
-
-  const sampleStories = stories
-    .filter((s) => storiesData.some((sample) => sample.user === s.user))
-    .sort(
-      (a, b) =>
-        new Date(b.expiresAt).getTime() - new Date(a.expiresAt).getTime()
-    );
+  // Sort users by whether they have unviewed stories (unviewed first)
+  const sortedUsersWithStories = usersWithStories
+    .filter(userGroup => userGroup.user !== "You") // Exclude "You" since it's handled separately
+    .sort((a, b) => {
+      const aHasUnviewed = a.stories.some(s => s._id && !viewedStories.has(s._id));
+      const bHasUnviewed = b.stories.some(s => s._id && !viewedStories.has(s._id));
+      
+      // Unviewed stories first
+      if (aHasUnviewed && !bHasUnviewed) return -1;
+      if (!aHasUnviewed && bHasUnviewed) return 1;
+      
+      // Then sort by latest story time
+      const aLatest = new Date(a.stories[0].expiresAt).getTime();
+      const bLatest = new Date(b.stories[0].expiresAt).getTime();
+      return bLatest - aLatest;
+    });
 
   return (
     <div>
@@ -555,45 +580,62 @@ const Story = () => {
             </SwiperSlide>
           )}
 
-          {[...otherDbStories, ...sampleStories].map((story, idx) => (
-            <SwiperSlide
-              key={`story-${story.user}-${idx}`}
-              className="!w-[140px]"
-            >
-              <div
-                className="relative w-full h-[200px] overflow-hidden rounded-2xl border-2 border-[#611DD0] cursor-pointer hover:border-[#a679ee] transition-all duration-300"
-                onClick={() => handleStoryClick(story)}
-              >
-                <img
-                  src={story.content.url || "default-story.jpg"}
-                  alt={`${story.user}'s story`}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
-                <div className="absolute bottom-3 left-3 right-3">
-                  <div className="flex items-center gap-2">
+          {sortedUsersWithStories.map((userGroup, idx) => {
+              const latestStory = userGroup.stories[0]; // Show the latest story as the preview
+              const hasUnviewed = userGroup.stories.some(s => s._id && !viewedStories.has(s._id));
+              
+              return (
+                <SwiperSlide
+                  key={`user-${userGroup.user}-${idx}`}
+                  className="!w-[140px]"
+                >
+                  <div
+                    className={`relative w-full h-[200px] z-1 overflow-hidden rounded-2xl border-2 cursor-pointer hover:border-[#a679ee] transition-all duration-300 ${
+                      hasUnviewed ? 'border-[#611DD0]' : 'border-gray-400'
+                    }`}
+                    onClick={() => handleStoryClick(latestStory)}
+                  >
                     <img
-                      src={story.profilePic || "default-profile.png"}
-                      alt={`${story.user}'s profile`}
-                      className="w-8 h-8 rounded-full border-2 border-white"
+                      src={latestStory.content.url || "default-story.jpg"}
+                      alt={`${userGroup.user}'s story`}
+                      className="w-full h-full object-cover"
                     />
-                    <span className="text-white font-semibold text-sm">
-                      {story.user}
-                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+                    
+                    {/* Story count indicator if user has multiple stories */}
+                    {userGroup.stories.length > 1 && (
+                      <div className="absolute top-2 right-2 bg-black/50 rounded-full px-2 py-1">
+                        <span className="text-white text-xs font-bold">
+                          {userGroup.stories.length}
+                        </span>
+                      </div>
+                    )}
+                    
+                    <div className="absolute bottom-3 left-3 right-3">
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={latestStory.profilePic || "default-profile.png"}
+                          alt={`${userGroup.user}'s profile`}
+                          className="w-8 h-8 rounded-full border-2 border-white"
+                        />
+                        <span className="text-white font-semibold text-sm">
+                          {userGroup.user}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 mt-1 text-white text-xs">
+                        <FaClock size={10} />
+                        <span>{formatTimeRemaining(latestStory.expiresAt)}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 mt-1 text-white text-xs">
-                    <FaClock size={10} />
-                    <span>{formatTimeRemaining(story.expiresAt)}</span>
-                  </div>
-                </div>
-              </div>
-            </SwiperSlide>
-          ))}
+                </SwiperSlide>
+              );
+            })}
         </Swiper>
       </div>
 
       {showMyStories && (
-        <div className="fixed inset-0 bg-[#ffffff9b] bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-[#ffffff9b] bg-opacity-50 flex items-center justify-center z-[5000]">
           <div className="relative w-[500px] h-[400px] bg-white rounded-[20px] p-4 overflow-y-auto">
             <button
               onClick={closeMyStories}
@@ -657,7 +699,7 @@ const Story = () => {
       )}
 
       {selectedUserStories.length > 0 && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[10004]">
           <div className="absolute top-4 left-4 right-4 flex gap-1 z-40">
             {selectedUserStories.map((_, index) => (
               <div key={index} className="flex-1 h-1 bg-gray-600 rounded-full">
@@ -699,7 +741,7 @@ const Story = () => {
 
           <button
             onClick={closeSelectedStory}
-            className="absolute top-6 right-6 text-white text-xl z-50 bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-70 transition-all"
+            className="absolute top-6 right-6 text-white text-xl z-[5001] bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-70 transition-all"
           >
             <FaWindowClose size={25} />
           </button>
@@ -710,7 +752,7 @@ const Story = () => {
                 e.stopPropagation();
                 handleDeleteStory(selectedUserStories[currentStoryIndex]);
               }}
-              className="absolute top-6 right-16 text-white text-xl z-50 bg-red-600 bg-opacity-80 rounded-full p-2 hover:bg-opacity-100 transition-all"
+              className="absolute top-6 right-16 text-white text-xl z-[5001] bg-red-600 bg-opacity-80 rounded-full p-2 hover:bg-opacity-100 transition-all"
             >
               <FaTrash size={20} />
             </button>
@@ -788,67 +830,6 @@ const Story = () => {
                 </div>
               )}
 
-              <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 z-40">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const currentStory = selectedUserStories[currentStoryIndex];
-                    const isLiked = currentStory.likes.includes(userId || "");
-                    const updatedStory = {
-                      ...currentStory,
-                      likes: isLiked
-                        ? currentStory.likes.filter((id) => id !== userId)
-                        : [...currentStory.likes, userId || ""],
-                    };
-                    setSelectedUserStories((prev) =>
-                      prev.map((s) =>
-                        s._id === updatedStory._id ? updatedStory : s
-                      )
-                    );
-                    setStories((prev) =>
-                      prev.map((s) =>
-                        s._id === updatedStory._id ? updatedStory : s
-                      )
-                    );
-                  }}
-                  className={`p-3 rounded-full backdrop-blur-sm transition-all ${
-                    selectedUserStories[currentStoryIndex].likes.includes(
-                      userId || ""
-                    )
-                      ? "bg-blue-600 text-white"
-                      : "bg-black bg-opacity-50 text-white hover:bg-opacity-70"
-                  }`}
-                >
-                  <FaThumbsUp size={24} />
-                </button>
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const currentStory = selectedUserStories[currentStoryIndex];
-                    const hasViewed = currentStory.views.includes(userId || "");
-                    if (!hasViewed) {
-                      const updatedStory = {
-                        ...currentStory,
-                        views: [...currentStory.views, userId || ""],
-                      };
-                      setSelectedUserStories((prev) =>
-                        prev.map((s) =>
-                          s._id === updatedStory._id ? updatedStory : s
-                        )
-                      );
-                      setStories((prev) =>
-                        prev.map((s) =>
-                          s._id === updatedStory._id ? updatedStory : s
-                        )
-                      );
-                    }
-                  }}
-                  className="p-3 rounded-full bg-black bg-opacity-50 text-white hover:bg-opacity-70 backdrop-blur-sm transition-all"
-                >
-                  <FaEye size={24} />
-                </button>
-              </div>
             </div>
 
             {(currentUserIndex > 0 || currentStoryIndex > 0) && (

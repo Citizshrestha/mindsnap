@@ -18,20 +18,22 @@ import ErrorBoundary from "./components/errorBoundary/ErrorBoundary";
 import Message from "./components/message/Message";
 import Explore from "./components/explore/Explore";
 import Connection from "./components/connections/Connection";
-import PendingRequest from "./components/pendingRequest/PendingRequest";
 import { useSocketNotifications } from "./hooks/useSocketNotifications";
+import { useDeletedUserTracking } from "./hooks/useDeletedUserTracking";
 import Settings from "./components/setting/Settings";
 import Contacts from "./components/contacts/Contacts";
 import { useEffect } from "react";
 import { clearUserData } from "./redux/slices/userSlice";
 import { clearUser } from "./redux/slices/authSlice";
 import { clearNotifications } from "./redux/slices/notificationSlice";
+import PendingRequest from "./components/pendingRequest/PendingRequest";
+import IncomingCallNotification from "./components/call/IncomingCallNotification";  
 
 const AppContent: React.FC = () => {
   useSocketNotifications();
+  useDeletedUserTracking(); // Add deleted user tracking
   const dispatch = useDispatch();
 
-  // Initialize authentication state on app load
   useEffect(() => {
     const initializeAuth = () => {
       const token = localStorage.getItem("accessToken");
@@ -50,33 +52,37 @@ const AppContent: React.FC = () => {
   }, [dispatch]);
 
   return (
-    <Routes>
-      {/* Public Routes (No Header) */}
-      <Route path="/" element={<LoginForm />} />
-      <Route path="/register" element={<RegisterForm />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/verify-email" element={<VerifyEmailForm />} />
-      <Route path="/verify-signup-otp" element={<VerifySignupOtpForm />} />
-      <Route path="/verify-otp" element={<VerifyOtpForm />} />
-      <Route path="/reset-password" element={<ResetPasswordForm />} />
+    <>
+      {/* Global Incoming Call Notification - Shows on all pages when authenticated */}
+      <IncomingCallNotification />
+      
+      <Routes>
+        {/* Public Routes (No Header) */}
+        <Route path="/" element={<LoginForm />} />
+        <Route path="/register" element={<RegisterForm />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/verify-email" element={<VerifyEmailForm />} />
+        <Route path="/verify-signup-otp" element={<VerifySignupOtpForm />} />
+        <Route path="/verify-otp" element={<VerifyOtpForm />} />
+        <Route path="/reset-password" element={<ResetPasswordForm />} />
 
-      {/* Authenticated Routes (With Header and Sidebar) */}
-      <Route element={<AuthenticatedLayout />}>
-        <Route path="/home" element={<Home />} />
-        <Route path="/profile" element={<UserProfile />} />
-        <Route path="/profile/:userId" element={<UserProfile />} />
-        <Route path="/edit-userprofile" element={<EditProfile />} />
-        <Route path="/messages" element={<Message />} />
-        <Route path="/explore" element={<Explore />} />
-        <Route path="/connections" element={<Connection />} />
-        <Route path="/follow_request" element={<PendingRequest />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/contacts" element={<Contacts />} />
-      </Route>
-    </Routes>
+        {/* Authenticated Routes (With Header and Sidebar) */}
+        <Route element={<AuthenticatedLayout />}>
+          <Route path="/home" element={<Home />} />
+          <Route path="/profile" element={<UserProfile />} />
+          <Route path="/profile/:userId" element={<UserProfile />} />
+          <Route path="/edit-userprofile" element={<EditProfile />} />
+          <Route path="/messages" element={<Message />} />
+          <Route path="/explore" element={<Explore />} />
+          <Route path="/connections" element={<Connection />} />
+          <Route path="/follow_request" element={<PendingRequest />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/contacts" element={<Contacts />} />
+        </Route>
+      </Routes>
+    </>
   );
 };
-
 const App: React.FC = () => {
   return (
     <ErrorBoundary>

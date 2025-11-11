@@ -1,6 +1,7 @@
 // services/messageApi.ts - Fixed version
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import type { MessageType } from "../data/messageSample";
+import { filterDeletedUsers } from "../utils/deletedUserUtils";
 
 interface MessagesResponse {
   success: boolean;
@@ -60,8 +61,14 @@ export const messageApi = createApi({
       
       return headers;
     },
+    // Add timeout to prevent hanging requests
+    timeout: 10000,
   }),
   tagTypes: ["Messages", "Users", "ChatList"],
+  // Reduce refetch frequency to avoid overwhelming the API
+  refetchOnMountOrArgChange: 30, // Only refetch if data is older than 30 seconds
+  refetchOnFocus: false, // Don't refetch when window regains focus
+  refetchOnReconnect: true, // Refetch when network reconnects
   endpoints: (builder) => ({
     getUsersForChatList: builder.query<ChatUser[], void>({
       query: () => "/messages/users",
@@ -91,10 +98,9 @@ export const messageApi = createApi({
         method: "POST",
         body: { content },
       }),
-      invalidatesTags: (_result, _error, { conversationId }) => [
-        { type: "Messages", id: conversationId },
-        "ChatList",
-      ],
+      // Don't invalidate immediately - let socket handle real-time updates
+      // This prevents unnecessary API calls that might fail
+      invalidatesTags: [],
     }),
 
     createOrGetConversation: builder.mutation<

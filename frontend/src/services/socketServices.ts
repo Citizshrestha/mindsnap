@@ -538,6 +538,101 @@ sendNotification(notificationData: {
       }
     });
   }
+
+  // ============ CALL EVENT LISTENERS ============
+  
+  // Listen for incoming calls
+  onIncomingCall(callback: (data: {
+    from: string;
+    callType: 'voice' | 'video';
+    callerInfo: {
+      id: string;
+      name: string;
+      profilePicture: string;
+    };
+    signal?: any;
+  }) => void): void {
+    this.socket?.on('incomingCall', callback);
+  }
+
+  // Remove incoming call listener
+  offIncomingCall(callback?: any): void {
+    if (callback) {
+      this.socket?.off('incomingCall', callback);
+    } else {
+      this.socket?.off('incomingCall');
+    }
+  }
+
+  // Listen for call accepted
+  onCallAccepted(callback: (data: { signal?: any }) => void): void {
+    this.socket?.on('callAccepted', callback);
+  }
+
+  // Remove call accepted listener
+  offCallAccepted(callback?: any): void {
+    if (callback) {
+      this.socket?.off('callAccepted', callback);
+    } else {
+      this.socket?.off('callAccepted');
+    }
+  }
+
+  // Listen for call rejected
+  onCallRejected(callback: () => void): void {
+    this.socket?.on('callRejected', callback);
+  }
+
+  // Remove call rejected listener
+  offCallRejected(callback?: any): void {
+    if (callback) {
+      this.socket?.off('callRejected', callback);
+    } else {
+      this.socket?.off('callRejected');
+    }
+  }
+
+  // Listen for call ended
+  onCallEnded(callback: (data?: { duration?: number; endedBy?: string }) => void): void {
+    this.socket?.on('callEnded', callback);
+  }
+
+  // Remove call ended listener
+  offCallEnded(callback?: any): void {
+    if (callback) {
+      this.socket?.off('callEnded', callback);
+    } else {
+      this.socket?.off('callEnded');
+    }
+  }
+
+  // Listen for call timeout/no answer
+  onCallTimeout(callback: () => void): void {
+    this.socket?.on('callTimeout', callback);
+  }
+
+  // Remove call timeout listener
+  offCallTimeout(callback?: any): void {
+    if (callback) {
+      this.socket?.off('callTimeout', callback);
+    } else {
+      this.socket?.off('callTimeout');
+    }
+  }
+
+  // Listen for ICE candidates
+  onIceCandidate(callback: (data: { candidate: any }) => void): void {
+    this.socket?.on('iceCandidate', callback);
+  }
+
+  // Remove ICE candidate listener
+  offIceCandidate(callback?: any): void {
+    if (callback) {
+      this.socket?.off('iceCandidate', callback);
+    } else {
+      this.socket?.off('iceCandidate');
+    }
+  }
 }
 
 export const socketService = new SocketService({

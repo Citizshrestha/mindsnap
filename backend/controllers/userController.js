@@ -29,6 +29,10 @@ export const getUserProfileInfo = asyncHandler(async (req, res) => {
     await user.save();
   }
 
+  // Count only existing followers/following (exclude deleted users)
+  const validFollowersCount = await User.countDocuments({ _id: { $in: user.followers } });
+  const validFollowingCount = await User.countDocuments({ _id: { $in: user.following } });
+
   return res.status(200).json({
     success: true,
     username: user.username,
@@ -42,8 +46,8 @@ export const getUserProfileInfo = asyncHandler(async (req, res) => {
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,
     postsCount: user.postsCount, // This should now be correct
-    followers: user.followers.length,
-    following: user.following.length
+    followers: validFollowersCount,
+    following: validFollowingCount
   });
 });
 
@@ -182,6 +186,10 @@ export const getUserById = asyncHandler(async (req, res) => {
     await user.save();
   }
 
+  // Count only existing followers/following (exclude deleted users)
+  const validFollowersCount = await User.countDocuments({ _id: { $in: user.followers } });
+  const validFollowingCount = await User.countDocuments({ _id: { $in: user.following } });
+
   return res.status(200).json({
     success: true,
     username: user.username,
@@ -195,8 +203,8 @@ export const getUserById = asyncHandler(async (req, res) => {
     vibe: user.vibe,
     vibeDescription: user.vibeDescription,
     postsCount: user.postsCount, // Correct count
-    followers: user.followers.length,
-    following: user.following.length,
+    followers: validFollowersCount,
+    following: validFollowingCount,
     isFollowing: user.followers.includes(req.user._id),
   });
 });
@@ -443,9 +451,12 @@ export const getUserConnections = asyncHandler(async (req, res) => {
       });
     }
 
+    // Filter out null/deleted users from the connections list
+    const validConnections = (user[type] || []).filter(connection => connection !== null && connection._id);
+
     return res.status(200).json({
       success: true,
-      [type]: user[type] || [],
+      [type]: validConnections,
     });
   } catch (error) {
     console.error(`Error fetching ${type} connections:`, error);

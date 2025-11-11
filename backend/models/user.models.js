@@ -5,13 +5,18 @@ const userSchema = new mongoose.Schema (
   {
     fullname: {
       type: String,
-      required: true,
+      required: function() {
+        return this.isAccountVerified && this.password;
+      },
       trim: true,
     },
     username: {
       type: String,
-      required: true,
+      required: function() {
+        return this.isAccountVerified && this.password;
+      },
       unique: true,
+      sparse: true, // Allow multiple null/undefined values
       trim: true,
     },
     email: {
@@ -21,9 +26,10 @@ const userSchema = new mongoose.Schema (
       trim: true,
     },
     password: {
-      
       type: String,
-      required: [true, 'Please enter a password'],
+      required: function() {
+        return this.isAccountVerified;
+      },
       minlength: 6,
       trim: true,
     },
@@ -81,9 +87,21 @@ const userSchema = new mongoose.Schema (
       type: Number,
       default: 0,
       min: 0,
-      max: 3,
+      max: 5, 
     },
     lastOtpAttempt: {
+      type: Date,
+      default: null,
+    },
+    tempSignupData: {
+      type: String,
+      default: null,
+    },
+    isAccountActive: {
+      type: Boolean,
+      default: true,
+    },
+    deactivatedAt: {
       type: Date,
       default: null,
     },
@@ -121,27 +139,27 @@ const userSchema = new mongoose.Schema (
         ref: 'Post',
       },
     ],
-        onlineStatus: {
+    onlineStatus: {
       type: String,
-      enum: ["online", "offline", "away"],
-      default: "offline"
+      enum: ['online', 'offline', 'away'],
+      default: 'offline',
     },
     lastSeen: {
       type: Date,
-      default: Date.now
+      default: Date.now,
     },
     socketId: String, // Track active socket connection
     isOnline: {
       type: Boolean,
-      default: false
-    }
+      default: false,
+    },
   },
   {timestamps: true}
 );
 
 // Hash the password before saving the user document
 userSchema.pre ('save', async function (next) {
-  if (!this.isModified ('password')) return next ();
+  if (!this.isModified ('password') || !this.password) return next ();
 
   try {
     const salt = await bcrypt.genSalt (10);
@@ -166,10 +184,10 @@ userSchema.methods.canSendOtp = function () {
   // Reset window if expired or first attempt
   if (!this.lastOtpAttempt || this.lastOtpAttempt < oneHourAgo) {
     this.otpAttempts = 0;
-    return {canSend: true, attemptsLeft: 3, timeLeft: 0};
+    return {canSend: true, attemptsLeft: 5, timeLeft: 0}; 
   }
 
-  if (this.otpAttempts >= 3) {
+  if (this.otpAttempts >= 5) { 
     const timeLeft = Math.max (
       0,
       Math.ceil ((this.lastOtpAttempt + oneHourInMs - now) / (1000 * 60))
@@ -179,9 +197,17 @@ userSchema.methods.canSendOtp = function () {
 
   return {
     canSend: true,
-    attemptsLeft: 3 - this.otpAttempts,
+    attemptsLeft: 5 - this.otpAttempts, 
     timeLeft: 0,
   };
 };
+
+userSchema.pre('save', function(next) {
+  // This ensures postsCount is always a number
+  if (this.postsCount === undefined || this.postsCount === null) {
+    this.postsCount = 0;
+  }
+  next();
+});
 
 export const User = mongoose.model ('User', userSchema);

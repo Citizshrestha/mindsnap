@@ -56,6 +56,18 @@ const upload = multer({
 });
 
 // Specific routes first (before parameterized routes)
+router.get("/unread-count", protect, async (req, res) => {
+  try {
+    const { Message } = await import('../models/message.models.js');
+    const count = await Message.countDocuments({
+      receiver: req.user._id,
+      seen: false,
+    });
+    res.json({ success: true, count });
+  } catch (error) {
+    res.status(500).json({ success: false, count: 0 });
+  }
+});
 router.get("/users", protect, getUsersForChatList);
 router.post("/reaction", protect, addReaction);
 router.post("/pin", protect, pinMessage);

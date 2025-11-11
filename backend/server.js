@@ -6,6 +6,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { setupCallHandlers } from './socketHandlers/callHandlers.js';
 import { sendMessage } from "./controllers/messageController.js";
 import multer from "multer";
 import jwt from "jsonwebtoken";
@@ -26,6 +27,7 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import hashtagRoutes  from "./routes/hashtagRoutes.js";
 import highlightRoutes  from "./routes/highlightRoutes.js";
 import userDeletionRoutes from "./routes/userDeletionRoutes.js";
+import callRoutes from "./routes/callRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -83,6 +85,7 @@ app.use("/api/hashtags", hashtagRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/highlights", highlightRoutes);
 app.use("/api/user-deletion", userDeletionRoutes);
+app.use("/api/calls", callRoutes);
 
 // ---------------------- ERROR HANDLER ----------------------
 app.use((err, req, res, next) => {
@@ -128,6 +131,7 @@ io.use((socket, next) => {
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
+  setupCallHandlers(io, socket);
   console.log(`New Client Connected: ${socket.id} (User: ${socket.userId})`);
   
   // Track user as online
@@ -167,7 +171,6 @@ io.on("connection", (socket) => {
 
   socket.on("joinConversation", (conversationId) => {
     socket.join(conversationId);
-    console.log(`✅ User ${socket.id} joined conversation: ${conversationId}`);
   });
 
   socket.on("leaveConversation", (conversationId) => {
@@ -213,11 +216,9 @@ io.on("connection", (socket) => {
 
       if (res.data) {
         io.to(conversationId).emit("newMessage", res.data);
-        console.log("Message sent successfully:", res.data._id);
       }
     } catch (error) {
       console.error("Error saving message:", error);
-      socket.emit("messageError", { error: "Failed to send message" });
     }
   });
 

@@ -15,7 +15,7 @@ export const createNotification = asyncHandler(async (req, res) => {
     targetType,
     targetId,
     isFollowing: isFollowing || false,
-  });
+});
 
   const populatedNotification = await Notification.findById(notification._id)
     .populate("sender", "username profilePicture")
@@ -97,8 +97,8 @@ export const getNotifications = async (req, res) => {
 
     res.json({ success: true, notifications });
   } catch (error) {
-    console.error("Error in getNotifications:", err.message);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    console.error("Error in getNotifications:", error);
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
   }
 };
 

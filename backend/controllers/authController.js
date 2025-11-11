@@ -38,6 +38,7 @@ const sendEmail = async (mailOptions) => {
 
 // @route POST /api/auth/register
 export const registerUser = asyncHandler(async (req, res) => {
+  
   const { fullname, username, email, password, profilePicture } = req.body;
 
   // Generate a secure default password for Google sign-ups or if password is invalid

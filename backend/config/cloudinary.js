@@ -5,10 +5,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // Debug: Check if environment variables are loaded
-console.log('=== CLOUDINARY CONFIGURATION ===');
-console.log('Cloudinary Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME);
-console.log('Cloudinary API Key:', process.env.CLOUDINARY_API_KEY ? 'Set' : 'Missing');
-console.log('Cloudinary API Secret:', process.env.CLOUDINARY_API_SECRET ? 'Set' : 'Missing');
+// console.log('=== CLOUDINARY CONFIGURATION ===');
+// console.log('Cloudinary Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME);
+// console.log('Cloudinary API Key:', process.env.CLOUDINARY_API_KEY ? 'Set' : 'Missing');
+// console.log('Cloudinary API Secret:', process.env.CLOUDINARY_API_SECRET ? 'Set' : 'Missing');
 
 if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
   console.error('❌ Missing Cloudinary environment variables!');
@@ -17,7 +17,7 @@ if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !pr
   console.error('CLOUDINARY_API_KEY=your_api_key');
   console.error('CLOUDINARY_API_SECRET=your_api_secret');
 } else {
-  console.log('✅ Cloudinary environment variables are set');
+  // console.log('✅ Cloudinary environment variables are set');
 }
 
 cloudinary.config({ 

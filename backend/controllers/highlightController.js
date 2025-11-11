@@ -72,17 +72,22 @@ export const getUserHighlights = asyncHandler(async (req, res) => {
   })
     .populate({
       path: "coverStory",
-      select: "content caption createdAt"
+      select: "content caption createdAt expiresAt"
     })
     .populate({
       path: "stories",
-      select: "content caption createdAt"
+      select: "content caption createdAt expiresAt"
     })
     .sort({ createdAt: -1 });
 
+  // Filter out highlights where coverStory is null (deleted)
+  const validHighlights = highlights.filter(h => h.coverStory !== null);
+
+  console.log(`📸 Fetched ${highlights.length} highlights, ${validHighlights.length} valid`);
+  
   res.json({
     success: true,
-    highlights
+    highlights: validHighlights
   });
 });
 

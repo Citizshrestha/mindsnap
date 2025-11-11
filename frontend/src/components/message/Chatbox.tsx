@@ -23,6 +23,7 @@ import type { MessageType } from "../../data/messageSample";
 import MediaUploadButton from "./MediaUploadButton";
 import MediaPreviewModal from "./MediaPreviewModal";
 import MessageContent from "./MessageContent";
+import CallModal from "./CallModal";
 import { skipToken } from "@reduxjs/toolkit/query";
 import {
   useGetMessagesQuery,
@@ -160,7 +161,9 @@ const ChatBox: React.FC<ChatBoxProps> = ({
   const [mediaCaption, setMediaCaption] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiPickerPosition, setEmojiPickerPosition] = useState({ top: 0, left: 0 });
-  // Removed unused messageInput state
+  const [showCallModal, setShowCallModal] = useState(false);
+  const [callType, setCallType] = useState<'voice' | 'video'>('voice');
+  // Note: Incoming calls are handled globally by IncomingCallNotification component
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -486,6 +489,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({
       }
     };
 
+    // Handle user account deletion
+    const handleUserAccountDeleted = (data: { deletedUserId: string; deletedUsername: string; message: string }) => {
+      console.log(`🗑️ User account deleted: ${data.deletedUsername}`);
+      
+      // If the deleted user is the current conversation partner, show message and redirect
+      if (currentConversationId === data.deletedUserId) {
+        toast.info(`${data.deletedUsername} has deleted their account`);
+        navigate('/messages');
+        return;
+      }
+      
+      // Refresh messages to get updated data from backend
+      refetchMessages();
+    };
+
     // Use the socket service methods for better event handling
     socketService.onUserTyping(handleTypingEvent);
     socketService.onMessageDeleted(handleMessageDeleted);
@@ -493,6 +511,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     socketService.onConversationRefresh(handleConversationRefresh);
     socketService.onChatListRefresh(handleChatListRefresh);
     socketService.onBulkMessageDeleted(handleBulkMessageDeleted);
+    socketService.onUserAccountDeleted(handleUserAccountDeleted);
 
     return () => {
       socketService.getSocket()?.off("userTyping", handleTypingEvent);
@@ -501,9 +520,12 @@ const ChatBox: React.FC<ChatBoxProps> = ({
       socketService.offConversationRefresh(handleConversationRefresh);
       socketService.offChatListRefresh(handleChatListRefresh);
       socketService.offBulkMessageDeleted(handleBulkMessageDeleted);
+      socketService.offUserAccountDeleted(handleUserAccountDeleted);
     };
   }, [isConnected, currentConversationId, userId, refetchMessages, dispatch, clearDeletedMessages]);
 
+  // NOTE: Incoming call listeners are now handled globally in IncomingCallNotification component
+  // This ensures calls are received even when user is not on the messages page
 
   // Fixed: Wrap isMe in useCallback and guard against missing sender
   const isMe = useCallback(
@@ -1183,6 +1205,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     onRetryMessage(messageId);
   };
 
+  // Call handlers (for outgoing calls only)
+  const handleVoiceCall = () => {
+    setCallType('voice');
+    setShowCallModal(true);
+  };
+
+  const handleVideoCall = () => {
+    setCallType('video');
+    setShowCallModal(true);
+  };
+
+  const handleCloseCall = () => {
+    setShowCallModal(false);
+  };
+
   const groupMessagesByDate = () => {
     const grouped: { [key: string]: MessageType[] } = {};
     displayMessages.forEach((msg) => {
@@ -1292,6 +1329,24 @@ const ChatBox: React.FC<ChatBoxProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-3 text-white">
+          {/* Voice Call Button */}
+          <button
+            onClick={handleVoiceCall}
+            className="h-10 w-10 rounded-full flex justify-center items-center bg-[#611DD0] hover:bg-[#4e16a8] transition"
+            title="Voice Call"
+          >
+            <FiPhoneCall size={18} />
+          </button>
+
+          {/* Video Call Button */}
+          <button
+            onClick={handleVideoCall}
+            className="h-10 w-10 rounded-full flex justify-center items-center bg-[#611DD0] hover:bg-[#4e16a8] transition"
+            title="Video Call"
+          >
+            <FiVideo size={18} />
+          </button>
+
           {/* Selection Mode Toggle */}
           <button 
             onClick={handleToggleSelectionMode}
@@ -1306,12 +1361,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
-          <button className="h-10 w-10 bg-[#611DD0] rounded-full flex justify-center items-center hover:bg-[#4e16a8] transition">
-            <FiPhoneCall size={20} />
-          </button>
-          <button className="h-10 w-10 bg-[#611DD0] rounded-full flex justify-center items-center hover:bg-[#4e16a8] transition">
-            <FiVideo size={20} />
-          </button>
+    
           <button className="h-10 w-10 bg-[#611DD0] rounded-full flex justify-center items-center hover:bg-[#4e16a8] transition">
             <BsThreeDots size={20} />
           </button>
@@ -1728,6 +1778,21 @@ const ChatBox: React.FC<ChatBoxProps> = ({
           ✏️ Editing message...
         </div>
       )}
+
+      {/* Call Modal */}
+      {/* Call Modal for outgoing calls only - Incoming calls handled by global component */}
+      <CallModal
+        isOpen={showCallModal}
+        callType={callType}
+        isIncoming={false}
+        caller={{
+          id: otherUserInfo?._id || currentConversationId || '',
+          name: otherUserInfo?.fullname || otherUserInfo?.username || activeChat,
+          profilePicture: otherUserInfo?.profilePicture || '',
+        }}
+        onClose={handleCloseCall}
+        conversationId={currentConversationId || undefined}
+      />
     </main>
   );
 };

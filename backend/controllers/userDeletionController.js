@@ -6,6 +6,9 @@ import { Comment } from "../models/comment.models.js";
 import { Message } from "../models/message.models.js";
 import { Conversation } from "../models/conversation.models.js";
 import { Notification } from "../models/notification.models.js";
+import { Hashtag } from "../models/hashtag.models.js";
+import { Highlight } from "../models/highlight.models.js";
+import { Like } from "../models/like.models.js";
 import { io } from "../server.js";
 
 
@@ -161,7 +164,33 @@ export const deleteUserAccount = asyncHandler(async (req, res) => {
       { $pull: { reactions: { user: userId } } }
     );
 
-    // 9. Delete notifications related to user interactions
+    // 9. Delete all likes/reactions by user
+    console.log("❤️ Deleting user's likes and reactions...");
+    const deletedLikesResult = await Like.deleteMany({ user: userId });
+    console.log(`❤️ Deleted ${deletedLikesResult.deletedCount} likes/reactions`);
+
+    // 10. Delete user's highlights
+    console.log("⭐ Deleting user's highlights...");
+    const deletedHighlightsResult = await Highlight.deleteMany({ user: userId });
+    console.log(`⭐ Deleted ${deletedHighlightsResult.deletedCount} highlights`);
+
+    // 11. Clean up hashtags - remove posts from hashtag collections
+    console.log("🏷️ Cleaning up hashtags...");
+    const userPostIds = userPosts.map(post => post._id);
+    let deletedEmptyHashtagsResult = { deletedCount: 0 };
+    
+    if (userPostIds.length > 0) {
+      await Hashtag.updateMany(
+        { posts: { $in: userPostIds } },
+        { $pullAll: { posts: userPostIds } }
+      );
+      
+      // Delete hashtags that have no posts left
+      deletedEmptyHashtagsResult = await Hashtag.deleteMany({ posts: { $size: 0 } });
+      console.log(`🏷️ Deleted ${deletedEmptyHashtagsResult.deletedCount} empty hashtags`);
+    }
+
+    // 12. Delete notifications related to user interactions
     await Notification.deleteMany({
       $or: [
         { sender: userId },
@@ -169,7 +198,7 @@ export const deleteUserAccount = asyncHandler(async (req, res) => {
       ]
     });
 
-    // 10. Finally, delete the user account
+    // 13. Finally, delete the user account
     console.log("👤 Deleting user account...");
     await User.findByIdAndDelete(userId);
 
@@ -200,6 +229,9 @@ export const deleteUserAccount = asyncHandler(async (req, res) => {
         stories: deletedStoriesResult.deletedCount,
         comments: deletedCommentsResult.deletedCount,
         messages: deletedMessagesResult.deletedCount,
+        likes: deletedLikesResult.deletedCount,
+        highlights: deletedHighlightsResult.deletedCount,
+        emptyHashtags: deletedEmptyHashtagsResult.deletedCount,
         sentNotifications: deletedSentNotifications.deletedCount,
         receivedNotifications: deletedReceivedNotifications.deletedCount,
         followersUpdated: followersToUpdate.length,
@@ -266,6 +298,73 @@ export const deactivateUserAccount = asyncHandler(async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to deactivate account"
+    });
+  }
+});
+
+/**
+ * Clean up orphaned user references from followers/following arrays
+ * This removes references to deleted users that no longer exist
+ */
+export const cleanupOrphanedReferences = asyncHandler(async (req, res) => {
+  try {
+    console.log("🧹 Starting cleanup of orphaned user references...");
+
+    // Get all users
+    const allUsers = await User.find().select("_id followers following username");
+    let totalCleaned = 0;
+
+    for (const user of allUsers) {
+      let needsUpdate = false;
+      const validFollowers = [];
+      const validFollowing = [];
+
+      // Check followers
+      for (const followerId of user.followers) {
+        const followerExists = await User.exists({ _id: followerId });
+        if (followerExists) {
+          validFollowers.push(followerId);
+        } else {
+          needsUpdate = true;
+          totalCleaned++;
+        }
+      }
+
+      // Check following
+      for (const followingId of user.following) {
+        const followingExists = await User.exists({ _id: followingId });
+        if (followingExists) {
+          validFollowing.push(followingId);
+        } else {
+          needsUpdate = true;
+          totalCleaned++;
+        }
+      }
+
+      // Update user if orphaned references found
+      if (needsUpdate) {
+        await User.findByIdAndUpdate(user._id, {
+          followers: validFollowers,
+          following: validFollowing
+        });
+        console.log(`✅ Cleaned up references for user: ${user.username}`);
+      }
+    }
+
+    console.log(`🧹 Cleanup complete! Removed ${totalCleaned} orphaned references`);
+
+    res.status(200).json({
+      success: true,
+      message: "Orphaned references cleaned up successfully",
+      cleanedCount: totalCleaned
+    });
+
+  } catch (error) {
+    console.error("❌ Error during cleanup:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to clean up orphaned references",
+      error: error.message
     });
   }
 });

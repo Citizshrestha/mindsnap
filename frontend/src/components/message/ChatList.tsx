@@ -409,6 +409,41 @@ const ChatList: React.FC<ChatListProps> = ({
     };
   }, [isConnected, users]);
 
+  // Listen for user account deletion events
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handleUserAccountDeleted = (data: { deletedUserId: string; deletedUsername: string; message: string }) => {
+      console.log(`🗑️ User deleted from chat list: ${data.deletedUsername}`);
+      
+      // Remove conversations with deleted user
+      setUsers(prevUsers => prevUsers.filter(user => user.userId !== data.deletedUserId));
+      
+      // Also remove from connections list if search is open
+      setConnections(prevConnections => prevConnections.filter(conn => conn._id !== data.deletedUserId));
+      setFilteredConnections(prevFiltered => prevFiltered.filter(conn => conn._id !== data.deletedUserId));
+      
+      // Show notification
+      toast.info(`${data.deletedUsername} has deleted their account`);
+    };
+
+    const handleUserDeleted = (data: { deletedUserId: string; deletedUsername: string; message: string }) => {
+      console.log(`🗑️ Individual user deleted from connections: ${data.deletedUsername}`);
+      
+      // Remove from connections list
+      setConnections(prevConnections => prevConnections.filter(conn => conn._id !== data.deletedUserId));
+      setFilteredConnections(prevFiltered => prevFiltered.filter(conn => conn._id !== data.deletedUserId));
+    };
+
+    socketService.onUserAccountDeleted(handleUserAccountDeleted);
+    socketService.onUserDeleted(handleUserDeleted);
+
+    return () => {
+      socketService.offUserAccountDeleted(handleUserAccountDeleted);
+      socketService.offUserDeleted(handleUserDeleted);
+    };
+  }, [isConnected]);
+
   // Loading skeleton component
   const ChatSkeleton = () => (
     <div className="flex items-center justify-between w-full px-5 py-3 border-b border-purple-200/20">

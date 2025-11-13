@@ -1,7 +1,7 @@
 // services/messageApi.ts - Fixed version
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import type { MessageType } from "../data/messageSample";
-import { filterDeletedUsers } from "../utils/deletedUserUtils";
+
 
 interface MessagesResponse {
   success: boolean;

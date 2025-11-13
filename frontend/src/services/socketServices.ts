@@ -550,13 +550,17 @@ sendNotification(notificationData: {
       name: string;
       profilePicture: string;
     };
-    signal?: any;
+    signal?: unknown;
   }) => void): void {
-    this.socket?.on('incomingCall', callback);
+    console.log('📞 Setting up incomingCall listener on socket');
+    this.socket?.on('incomingCall', (data) => {
+      console.log('📞 SOCKET SERVICE: incomingCall event fired!', data);
+      callback(data);
+    });
   }
 
   // Remove incoming call listener
-  offIncomingCall(callback?: any): void {
+  offIncomingCall(callback?: (...args: unknown[]) => void): void {
     if (callback) {
       this.socket?.off('incomingCall', callback);
     } else {
@@ -565,12 +569,12 @@ sendNotification(notificationData: {
   }
 
   // Listen for call accepted
-  onCallAccepted(callback: (data: { signal?: any }) => void): void {
+  onCallAccepted(callback: (data: { signal?: unknown }) => void): void {
     this.socket?.on('callAccepted', callback);
   }
 
   // Remove call accepted listener
-  offCallAccepted(callback?: any): void {
+  offCallAccepted(callback?: (...args: unknown[]) => void): void {
     if (callback) {
       this.socket?.off('callAccepted', callback);
     } else {
@@ -584,7 +588,7 @@ sendNotification(notificationData: {
   }
 
   // Remove call rejected listener
-  offCallRejected(callback?: any): void {
+  offCallRejected(callback?: (...args: unknown[]) => void): void {
     if (callback) {
       this.socket?.off('callRejected', callback);
     } else {
@@ -598,7 +602,7 @@ sendNotification(notificationData: {
   }
 
   // Remove call ended listener
-  offCallEnded(callback?: any): void {
+  offCallEnded(callback?: (...args: unknown[]) => void): void {
     if (callback) {
       this.socket?.off('callEnded', callback);
     } else {
@@ -612,7 +616,7 @@ sendNotification(notificationData: {
   }
 
   // Remove call timeout listener
-  offCallTimeout(callback?: any): void {
+  offCallTimeout(callback?: (...args: unknown[]) => void): void {
     if (callback) {
       this.socket?.off('callTimeout', callback);
     } else {
@@ -621,12 +625,12 @@ sendNotification(notificationData: {
   }
 
   // Listen for ICE candidates
-  onIceCandidate(callback: (data: { candidate: any }) => void): void {
+  onIceCandidate(callback: (data: { candidate: unknown }) => void): void {
     this.socket?.on('iceCandidate', callback);
   }
 
   // Remove ICE candidate listener
-  offIceCandidate(callback?: any): void {
+  offIceCandidate(callback?: (...args: unknown[]) => void): void {
     if (callback) {
       this.socket?.off('iceCandidate', callback);
     } else {

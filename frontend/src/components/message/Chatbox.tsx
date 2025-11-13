@@ -522,7 +522,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
       socketService.offBulkMessageDeleted(handleBulkMessageDeleted);
       socketService.offUserAccountDeleted(handleUserAccountDeleted);
     };
-  }, [isConnected, currentConversationId, userId, refetchMessages, dispatch, clearDeletedMessages]);
+  }, [isConnected, currentConversationId, userId, refetchMessages, dispatch, isSelectionMode, navigate]);
 
   // NOTE: Incoming call listeners are now handled globally in IncomingCallNotification component
   // This ensures calls are received even when user is not on the messages page
@@ -670,7 +670,7 @@ const ChatBox: React.FC<ChatBoxProps> = ({
     setShowEmojiPicker(!showEmojiPicker);
   }, [showEmojiPicker]);
 
-  const handleEmojiSelect = useCallback((emoji: any) => {
+  const handleEmojiSelect = useCallback((emoji: { native: string }) => {
     if (messageInputRef.current) {
       const input = messageInputRef.current;
       const start = input.selectionStart || 0;

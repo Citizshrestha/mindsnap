@@ -81,12 +81,44 @@ const MessageContent: React.FC<MessageContentProps> = ({ message }) => {
     return <p className="break-words">{message.content}</p>;
   };
 
+  // Render system message (for call notifications, etc.)
+  const renderSystemMessage = () => {
+    if (!message.content) return null;
+
+    // Determine icon based on message content
+    let icon = '📞';
+    let bgColor = 'bg-blue-50';
+    let textColor = 'text-blue-700';
+    let borderColor = 'border-blue-200';
+
+    if (message.content.includes('ended')) {
+      icon = '📞';
+      bgColor = 'bg-green-50';
+      textColor = 'text-green-700';
+      borderColor = 'border-green-200';
+    } else if (message.content.includes('declined') || message.content.includes('Missed')) {
+      icon = '📵';
+      bgColor = 'bg-red-50';
+      textColor = 'text-red-700';
+      borderColor = 'border-red-200';
+    }
+
+    return (
+      <div className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg ${bgColor} border ${borderColor}`}>
+        <span className="text-lg">{icon}</span>
+        <p className={`text-sm font-medium ${textColor}`}>{message.content}</p>
+      </div>
+    );
+  };
+
   // Main render logic based on message type
   switch (message.messageType) {
     case 'image':
       return renderImage();
     case 'video':
       return renderVideo();
+    case 'system':
+      return renderSystemMessage();
     case 'text':
     default:
       return renderText();

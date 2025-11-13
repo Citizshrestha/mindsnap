@@ -1,5 +1,8 @@
-import React from 'react';
-import { RiCloseLine, RiDeleteBinLine, RiSendPlaneFill } from 'react-icons/ri';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { RiCloseLine, RiDeleteBinLine, RiSendPlaneFill, RiAddLine } from 'react-icons/ri';
+import { HiOutlineEmojiHappy } from "react-icons/hi";
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 
 interface MediaPreviewModalProps {
   isOpen: boolean;
@@ -10,6 +13,7 @@ interface MediaPreviewModalProps {
   onRemoveMedia: (index: number) => void;
   onCaptionChange: (caption: string) => void;
   onSendMedia: () => void;
+  onAddMoreFiles: () => void;
 }
 
 const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
@@ -20,9 +24,82 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
   onClose,
   onRemoveMedia,
   onCaptionChange,
-  onSendMedia
+  onSendMedia,
+  onAddMoreFiles,
 }) => {
+  // CRITICAL: Early return MUST come before any hooks
   if (!isOpen) return null;
+  
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiPickerPosition, setEmojiPickerPosition] = useState({ top: 0, left: 0 });
+
+  // Emoji picker functions
+  const toggleEmojiPicker = useCallback(() => {
+    if (emojiButtonRef.current) {
+      const buttonRect = emojiButtonRef.current.getBoundingClientRect();
+      const pickerHeight = 350; // Approximate height of emoji picker
+      const pickerWidth = 320; // Approximate width of emoji picker
+      
+      // Calculate position - show above button to avoid going off-screen
+      let top = buttonRect.top - pickerHeight - 8;
+      let left = buttonRect.left - pickerWidth + 40; // Align right edge with button area
+      
+      // Ensure picker doesn't go off-screen horizontally
+      if (left + pickerWidth > window.innerWidth) {
+        left = window.innerWidth - pickerWidth - 20;
+      }
+      if (left < 20) {
+        left = 20;
+      }
+      
+      // Ensure picker doesn't go off-screen vertically
+      if (top < 20) {
+        top = 20;
+      }
+      
+      setEmojiPickerPosition({ top, left });
+    }
+    setShowEmojiPicker(!showEmojiPicker);
+  }, [showEmojiPicker]);
+
+  const handleEmojiSelect = useCallback((emoji: any) => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart || 0;
+      const end = textarea.selectionEnd || 0;
+      const newText = mediaCaption.slice(0, start) + emoji.native + mediaCaption.slice(end);
+      onCaptionChange(newText);
+      
+      // Set cursor position after emoji
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + emoji.native.length, start + emoji.native.length);
+      }, 0);
+    }
+    setShowEmojiPicker(false);
+  }, [mediaCaption, onCaptionChange]);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        showEmojiPicker &&
+        emojiButtonRef.current &&
+        !emojiButtonRef.current.contains(target) &&
+        !target.closest('.emoji-picker')
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
   const getFilePreview = (file: File, index: number) => {
     const fileUrl = URL.createObjectURL(file);
@@ -79,19 +156,42 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
         <div className="p-4 max-h-60 overflow-y-auto">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             {selectedMedia.map((file, index) => getFilePreview(file, index))}
+            {/* Add More Files Button */}
+            <div 
+              onClick={onAddMoreFiles}
+              className="border-2 border-dashed border-gray-300 rounded-lg h-32 flex flex-col items-center justify-center cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors"
+            >
+              <RiAddLine size={24} className="text-gray-400 mb-2" />
+              <span className="text-sm text-gray-500">Add More</span>
+            </div>
           </div>
         </div>
 
         {/* Caption Input */}
-        <div className="p-4 border-t">
-          <textarea
-            value={mediaCaption}
-            onChange={(e) => onCaptionChange(e.target.value)}
-            placeholder="Add a caption (optional)..."
-            className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
-            rows={3}
-            disabled={isUploading}
-          />
+        <div className="p-4 border-t relative">
+          <div className="relative">
+            <textarea
+              ref={textareaRef}
+              value={mediaCaption}
+              onChange={(e) => onCaptionChange(e.target.value)}
+              placeholder="Add a caption (optional)..."
+              className="w-full p-3 pr-12 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+              rows={3}
+              disabled={isUploading}
+            />
+            
+            {/* Emoji Button */}
+            <button
+              ref={emojiButtonRef}
+              type="button"
+              onClick={toggleEmojiPicker}
+              className="absolute top-3 right-3 text-gray-500 hover:text-purple-600 transition-colors"
+              title="Add emoji"
+              disabled={isUploading}
+            >
+              <HiOutlineEmojiHappy size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Footer */}
@@ -127,6 +227,30 @@ const MediaPreviewModal: React.FC<MediaPreviewModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Emoji Picker */}
+      {showEmojiPicker && (
+        <div
+          className="emoji-picker fixed z-[999999]"
+          style={{
+            top: `${emojiPickerPosition.top}px`,
+            left: `${emojiPickerPosition.left}px`,
+            zIndex: 999999
+          }}
+        >
+          <Picker
+            data={data}
+            onEmojiSelect={handleEmojiSelect}
+            theme="light"
+            set="native"
+            showPreview={false}
+            showSkinTones={false}
+            emojiButtonSize={28}
+            emojiSize={20}
+            maxFrequentRows={2}
+          />
+        </div>
+      )}
     </div>
   );
 };

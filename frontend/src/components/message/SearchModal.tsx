@@ -80,7 +80,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ startChat, startGroupChat, on
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex justify-center items-center bg-black/60"
+      className="fixed inset-0 z-[100] flex justify-center items-center bg-transparent"
       onClick={onClose}
     >
       <div

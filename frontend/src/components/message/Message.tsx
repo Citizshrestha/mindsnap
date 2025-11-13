@@ -69,7 +69,7 @@ const Message: React.FC = () => {
         
         if (savedChats) {
           const parsedChats = JSON.parse(savedChats);
-          const validatedChats = parsedChats.map((chat: any) => ({
+          const validatedChats = parsedChats.map((chat: Chat) => ({
             ...chat,
             userId: chat.userId || chat.id,
             profilePicture: chat.profilePicture || chat.image
@@ -102,6 +102,7 @@ const Message: React.FC = () => {
     if (chatListUsers.length > 0) {
       console.log("Syncing chat summaries with API data:", chatListUsers);
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const apiChats: Chat[] = chatListUsers.map((user: any) => ({
         id: user.userId || user.id,
         userId: user.userId || user.id,
@@ -109,7 +110,7 @@ const Message: React.FC = () => {
         lastMessage: user.lastMessage || "Start a conversation",
         time: user.time || new Date().toISOString(),
         image: user.profilePicture,
-        profilePicture: user.profilePicture,
+        profilePicture: user.profilePicture || '',
         unreadCount: user.unreadCount || 0,
         userData: {
           _id: user.userId || user.id,
@@ -171,9 +172,6 @@ const Message: React.FC = () => {
         if (isMounted) {
           setIsSocketConnected(true);
           console.log("Socket connected successfully");
-        }
-
-        if (currentConversationId) {
         }
 
         // Message handlers
@@ -297,8 +295,8 @@ const Message: React.FC = () => {
           }
           
           // Refetch for server sync
-          try { refetchMessages(); } catch {}
-          try { refetchChatList(); } catch {}
+          try { refetchMessages(); } catch (e) { console.error('Failed to refetch messages:', e); }
+          try { refetchChatList(); } catch (e) { console.error('Failed to refetch chat list:', e); }
         });
         
         socketService.getSocket()?.on('messageEdited', (data: { messageId: string; content: string; conversationId: string; isEdited: boolean; editedAt: string }) => {
@@ -326,8 +324,8 @@ const Message: React.FC = () => {
           }));
           
           // Refetch for server sync
-          try { refetchMessages(); } catch {}
-          try { refetchChatList(); } catch {}
+          try { refetchMessages(); } catch (e) { console.error('Failed to refetch messages:', e); }
+          try { refetchChatList(); } catch (e) { console.error('Failed to refetch chat list:', e); }
         });
 
         socketService.getSocket()?.on('disconnect', () => {
@@ -393,7 +391,7 @@ const Message: React.FC = () => {
         socketService.leaveConversation(currentConversationId);
       }
     };
-  }, [token, userId, currentConversationId]);
+  }, [token, userId, currentConversationId, refetchChatList, refetchMessages]);
 
   // Load messages when conversation changes
   useEffect(() => {
@@ -443,7 +441,7 @@ const Message: React.FC = () => {
         }
       }
     }
-  }, [messagesResponse, currentConversationId, userId, markConversationAsSeen, refetchChatList]);
+  }, [messagesResponse, currentConversationId, userId, markConversationAsSeen, refetchChatList, dispatch]);
 
   const handleStartChat = useCallback(async (user: { 
     id: string; 
@@ -508,7 +506,7 @@ const Message: React.FC = () => {
       console.error('Error starting chat:', error);
       toast.error('Failed to start conversation. Please try again.');
     }
-  }, [chatSummaries, dispatch, refetchMessages, refetchChatList, token, createOrGetConversation]);
+  }, [chatSummaries, dispatch, refetchMessages, refetchChatList, createOrGetConversation]);
 
   // FIXED: Prevent duplicate message sending and ensure instant UI
   const handleSendMessage = useCallback(async (msg: Omit<MessageType, "_id">) => {
@@ -543,7 +541,7 @@ const Message: React.FC = () => {
           conversationId: currentConversationId, 
           content: msg.content
         }).unwrap();
-        setMessages(prev => prev.map(m => m._id === tempId ? { ...result, status: "sent" } as any : m));
+        setMessages(prev => prev.map(m => m._id === tempId ? { ...result, status: "sent" } as MessageType : m));
         messageQueueRef.current.delete(tempId);
       }
     } catch  {
@@ -622,6 +620,7 @@ const Message: React.FC = () => {
       );
     } else {
       // If not found locally, check in API chat list
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const apiChat = chatListUsers.find((user: any) => (user.userId || user.id) === chatId);
       if (apiChat) {
         console.log("Found chat in API data:", apiChat.name);
@@ -691,7 +690,7 @@ const Message: React.FC = () => {
       {isSearchOpen && (
         <SearchModal
           startChat={handleStartChat}
-          startGroupChat={() => {}}
+          startGroupChat={() => { console.log('Group chat feature not implemented yet'); }}
           onClose={() => setIsSearchOpen(false)}
         />
       )}

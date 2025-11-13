@@ -27,8 +27,7 @@ const storySchema = new mongoose.Schema(
         expiresAt: {
             type: Date,
             required: true,
-            default: () => Date.now() + 1 * 24 * 60 * 60 * 1000, // Expires in 24 hours
-            index: { expires: 0 },
+            default: () => Date.now() + 1 * 24 * 60 * 60 * 1000, // Expires in 24 hours (for frontend display only, NOT deleted from DB)
         },
         views: [
             {
